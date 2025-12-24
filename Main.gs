@@ -1,0 +1,457 @@
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║                    TPS-SCHEDULE MAIN ROUTER                                ║
+// ║                                                                            ║
+// ║  Purpose: Routes requests to different implementation versions             ║
+// ║           Allows easy switching between SIMPLIFIED and OPTIMIZED           ║
+// ║                                                                            ║
+// ║  Last Modified: December 24, 2025                                          ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+
+// ┌────────────────────────────────────────────────────────────────────────────┐
+// │                        VERSION CONFIGURATION                               │
+// │                                                                            │
+// │  Change ACTIVE_VERSION to switch between implementations:                  │
+// │                                                                            │
+// │  "SIMPLIFIED" (v4.0):                                                      │
+// │    - No caching, always fresh data                                         │
+// │    - Best for: Personalized background refresh (15-min intervals)          │
+// │    - Performance: ~30s per request                                         │
+// │                                                                            │
+// │  "OPTIMIZED" (v3.1):                                                       │
+// │    - Caching enabled (10-min TTL)                                          │
+// │    - Best for: Shared dashboards, repeated queries                         │
+// │    - Performance: ~30s first request, <1s cached requests                  │
+// │                                                                            │
+// └────────────────────────────────────────────────────────────────────────────┘
+
+const ACTIVE_VERSION = "SIMPLIFIED";  // Options: "SIMPLIFIED", "OPTIMIZED"
+
+// Set to true to allow URL parameter to override ACTIVE_VERSION
+const ALLOW_VERSION_OVERRIDE = true;
+
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║                                                                            ║
+// ║                          MAIN WEB APP ENDPOINT                             ║
+// ║                                                                            ║
+// ║  This is the entry point for all HTTP requests to your deployed web app.   ║
+// ║  It routes requests to the appropriate implementation based on config.     ║
+// ║                                                                            ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+
+/**
+ * doGet(e) - Main router for HTTP GET requests
+ *
+ * Routes incoming requests to the appropriate implementation version.
+ * Can be controlled via ACTIVE_VERSION constant or URL parameter.
+ *
+ * @param {Object} e - Event object from Google Apps Script
+ * @param {Object} e.parameter - URL query parameters
+ *
+ * URL EXAMPLES:
+ *   Basic request (uses ACTIVE_VERSION):
+ *     ?name=Sick&days=4
+ *
+ *   Override version via URL parameter (if ALLOW_VERSION_OVERRIDE = true):
+ *     ?name=Sick&days=4&version=optimized
+ *     ?name=Sick&days=4&version=simplified
+ *     ?name=Sick&days=4&version=4.0
+ *     ?name=Sick&days=4&version=3.1
+ *
+ *   Test mode:
+ *     ?name=Sick&days=4&testDate=2025-12-15
+ *
+ * @returns {TextOutput} JSON response from the selected implementation
+ */
+function doGet(e) {
+  try {
+    // Determine which version to use
+    let selectedVersion = ACTIVE_VERSION;
+
+    // Allow URL parameter to override if enabled
+    if (ALLOW_VERSION_OVERRIDE && e.parameter.version) {
+      const versionParam = e.parameter.version.toLowerCase();
+
+      if (versionParam === "simplified" || versionParam === "4.0" || versionParam === "4") {
+        selectedVersion = "SIMPLIFIED";
+      } else if (versionParam === "optimized" || versionParam === "3.1" || versionParam === "3") {
+        selectedVersion = "OPTIMIZED";
+      } else {
+        // Invalid version parameter - return error
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            error: true,
+            message: `Invalid version parameter: "${e.parameter.version}". Valid options: "simplified", "optimized", "4.0", "3.1"`
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    // Log routing decision
+    console.log(`🔀 ROUTER: Routing to ${selectedVersion} version`);
+    if (e.parameter.version) {
+      console.log(`   Override via URL parameter: version=${e.parameter.version}`);
+    }
+
+    // Route to the appropriate implementation
+    if (selectedVersion === "SIMPLIFIED") {
+      return doGet_Simplified(e);
+    } else if (selectedVersion === "OPTIMIZED") {
+      return doGet_Optimized(e);
+    } else {
+      // Invalid ACTIVE_VERSION configuration
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          error: true,
+          message: `Invalid ACTIVE_VERSION configuration: "${ACTIVE_VERSION}". Must be "SIMPLIFIED" or "OPTIMIZED"`,
+          hint: "Check Main.gs and update ACTIVE_VERSION constant"
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+  } catch (error) {
+    // Catch any routing errors
+    console.error("❌ ROUTER ERROR:", error);
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        error: true,
+        message: "Router error: " + error.toString(),
+        stack: error.stack,
+        hint: "Check that both doGet_Simplified() and doGet_Optimized() functions exist"
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║                                                                            ║
+// ║                          TESTING FUNCTIONS                                 ║
+// ║                                                                            ║
+// ║  Run these from the Apps Script editor to test each version independently  ║
+// ║                                                                            ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+
+/**
+ * testRouter() - Test the router with default settings
+ *
+ * Tests whichever version is currently active (ACTIVE_VERSION).
+ * Run this to verify the router is working correctly.
+ */
+function testRouter() {
+  console.log("🧪 TESTING ROUTER");
+  console.log("=".repeat(60));
+  console.log(`Active version: ${ACTIVE_VERSION}`);
+  console.log("");
+
+  const mockEvent = {
+    parameter: {
+      name: "Sick",
+      days: "4"
+    }
+  };
+
+  console.log("Simulating request: ?name=Sick&days=4");
+  const response = doGet(mockEvent);
+  const content = response.getContent();
+  const parsed = JSON.parse(content);
+
+  if (parsed.error) {
+    console.log("❌ ERROR:");
+    console.log(`   ${parsed.message}`);
+  } else {
+    console.log("✅ SUCCESS:");
+    console.log(`   Version: ${parsed.version}`);
+    console.log(`   Simplified: ${parsed.simplified || false}`);
+    console.log(`   Total events: ${parsed.totalEvents}`);
+    console.log(`   Search name: ${parsed.searchName}`);
+  }
+
+  console.log("\n📋 FULL RESPONSE:");
+  console.log(JSON.stringify(parsed, null, 2));
+}
+
+
+/**
+ * testSimplified() - Test SIMPLIFIED version directly
+ *
+ * Bypasses the router and tests the simplified implementation directly.
+ * Useful for debugging the simplified version.
+ */
+function testSimplified() {
+  console.log("🧪 TESTING SIMPLIFIED VERSION (v4.0)");
+  console.log("=".repeat(60));
+
+  const mockEvent = {
+    parameter: {
+      name: "Sick",
+      days: "4"
+    }
+  };
+
+  console.log("Calling doGet_Simplified() directly...\n");
+
+  try {
+    const response = doGet_Simplified(mockEvent);
+    const content = response.getContent();
+    const parsed = JSON.parse(content);
+
+    if (parsed.error) {
+      console.log("❌ ERROR:");
+      console.log(`   ${parsed.message}`);
+      if (parsed.stack) {
+        console.log(`   Stack: ${parsed.stack}`);
+      }
+    } else {
+      console.log("✅ SUCCESS:");
+      console.log(`   Version: ${parsed.version}`);
+      console.log(`   Simplified: ${parsed.simplified}`);
+      console.log(`   Total events: ${parsed.totalEvents}`);
+      console.log(`   Days searched: ${parsed.daysSearched}`);
+
+      console.log("\n📅 EVENTS FOUND:");
+      parsed.events.forEach(day => {
+        console.log(`   ${day.dayName} (${day.date}): ${day.events.length} events`);
+      });
+    }
+
+    console.log("\n📋 FULL RESPONSE:");
+    console.log(JSON.stringify(parsed, null, 2));
+
+  } catch (error) {
+    console.error("❌ FUNCTION NOT FOUND OR ERROR:");
+    console.error(`   ${error.toString()}`);
+    console.error("\n💡 HINT: Make sure Simplified.gs file exists with doGet_Simplified() function");
+  }
+}
+
+
+/**
+ * testOptimized() - Test OPTIMIZED version directly
+ *
+ * Bypasses the router and tests the optimized (cached) implementation directly.
+ * Useful for debugging the optimized version.
+ */
+function testOptimized() {
+  console.log("🧪 TESTING OPTIMIZED VERSION (v3.1)");
+  console.log("=".repeat(60));
+
+  const mockEvent = {
+    parameter: {
+      name: "Sick",
+      days: "4"
+    }
+  };
+
+  console.log("Calling doGet_Optimized() directly...\n");
+
+  try {
+    const response = doGet_Optimized(mockEvent);
+    const content = response.getContent();
+    const parsed = JSON.parse(content);
+
+    if (parsed.error) {
+      console.log("❌ ERROR:");
+      console.log(`   ${parsed.message}`);
+      if (parsed.stack) {
+        console.log(`   Stack: ${parsed.stack}`);
+      }
+    } else {
+      console.log("✅ SUCCESS:");
+      console.log(`   Version: ${parsed.version}`);
+      console.log(`   Optimized: ${parsed.optimized}`);
+      console.log(`   Total events: ${parsed.totalEvents}`);
+      console.log(`   Days searched: ${parsed.daysSearched}`);
+
+      console.log("\n📅 EVENTS FOUND:");
+      parsed.events.forEach(day => {
+        console.log(`   ${day.dayName} (${day.date}): ${day.events.length} events`);
+      });
+    }
+
+    console.log("\n📋 FULL RESPONSE:");
+    console.log(JSON.stringify(parsed, null, 2));
+
+  } catch (error) {
+    console.error("❌ FUNCTION NOT FOUND OR ERROR:");
+    console.error(`   ${error.toString()}`);
+    console.error("\n💡 HINT: Make sure Optimized.gs file exists with doGet_Optimized() function");
+  }
+}
+
+
+/**
+ * testBothVersions() - Compare both versions side by side
+ *
+ * Runs both implementations and compares the results.
+ * Useful for verifying both versions work and produce consistent results.
+ */
+function testBothVersions() {
+  console.log("🧪 TESTING BOTH VERSIONS - COMPARISON");
+  console.log("=".repeat(60));
+
+  const mockEvent = {
+    parameter: {
+      name: "Sick",
+      days: "4"
+    }
+  };
+
+  console.log("Testing with: ?name=Sick&days=4\n");
+
+  // Test Simplified
+  console.log("📦 SIMPLIFIED VERSION (v4.0):");
+  console.log("-".repeat(60));
+  try {
+    const startSimplified = Date.now();
+    const responseSimplified = doGet_Simplified(mockEvent);
+    const durationSimplified = Date.now() - startSimplified;
+    const parsedSimplified = JSON.parse(responseSimplified.getContent());
+
+    if (parsedSimplified.error) {
+      console.log(`❌ Error: ${parsedSimplified.message}`);
+    } else {
+      console.log(`✅ Version: ${parsedSimplified.version}`);
+      console.log(`⏱️  Duration: ${durationSimplified}ms`);
+      console.log(`📊 Events: ${parsedSimplified.totalEvents}`);
+      console.log(`📅 Days: ${parsedSimplified.daysSearched}`);
+    }
+  } catch (error) {
+    console.log(`❌ Function not found: ${error.toString()}`);
+  }
+
+  console.log("");
+
+  // Test Optimized
+  console.log("📦 OPTIMIZED VERSION (v3.1):");
+  console.log("-".repeat(60));
+  try {
+    const startOptimized = Date.now();
+    const responseOptimized = doGet_Optimized(mockEvent);
+    const durationOptimized = Date.now() - startOptimized;
+    const parsedOptimized = JSON.parse(responseOptimized.getContent());
+
+    if (parsedOptimized.error) {
+      console.log(`❌ Error: ${parsedOptimized.message}`);
+    } else {
+      console.log(`✅ Version: ${parsedOptimized.version}`);
+      console.log(`⏱️  Duration: ${durationOptimized}ms`);
+      console.log(`📊 Events: ${parsedOptimized.totalEvents}`);
+      console.log(`📅 Days: ${parsedOptimized.daysSearched}`);
+    }
+  } catch (error) {
+    console.log(`❌ Function not found: ${error.toString()}`);
+  }
+
+  console.log("\n" + "=".repeat(60));
+  console.log("💡 NOTE:");
+  console.log("   Both versions should return the same events");
+  console.log("   Only difference should be performance and caching behavior");
+}
+
+
+/**
+ * testVersionSwitching() - Test switching via URL parameter
+ *
+ * Tests that the version parameter works correctly.
+ * Only works if ALLOW_VERSION_OVERRIDE = true
+ */
+function testVersionSwitching() {
+  console.log("🧪 TESTING VERSION SWITCHING VIA URL PARAMETER");
+  console.log("=".repeat(60));
+  console.log(`ALLOW_VERSION_OVERRIDE: ${ALLOW_VERSION_OVERRIDE}`);
+  console.log(`ACTIVE_VERSION: ${ACTIVE_VERSION}\n`);
+
+  if (!ALLOW_VERSION_OVERRIDE) {
+    console.log("⚠️  WARNING: ALLOW_VERSION_OVERRIDE is false");
+    console.log("   URL parameter will be ignored");
+    console.log("   Set ALLOW_VERSION_OVERRIDE = true to enable\n");
+  }
+
+  const tests = [
+    { version: undefined, desc: "No version param (uses ACTIVE_VERSION)" },
+    { version: "simplified", desc: "version=simplified" },
+    { version: "optimized", desc: "version=optimized" },
+    { version: "4.0", desc: "version=4.0 (alias for simplified)" },
+    { version: "3.1", desc: "version=3.1 (alias for optimized)" }
+  ];
+
+  tests.forEach(test => {
+    console.log(`📋 Test: ${test.desc}`);
+    console.log("-".repeat(60));
+
+    const mockEvent = {
+      parameter: {
+        name: "Sick",
+        days: "4"
+      }
+    };
+
+    if (test.version) {
+      mockEvent.parameter.version = test.version;
+    }
+
+    try {
+      const response = doGet(mockEvent);
+      const parsed = JSON.parse(response.getContent());
+
+      if (parsed.error) {
+        console.log(`❌ Error: ${parsed.message}`);
+      } else {
+        console.log(`✅ Routed to version: ${parsed.version}`);
+        console.log(`   Simplified: ${parsed.simplified || false}`);
+        console.log(`   Events found: ${parsed.totalEvents}`);
+      }
+    } catch (error) {
+      console.log(`❌ Error: ${error.toString()}`);
+    }
+
+    console.log("");
+  });
+
+  console.log("=".repeat(60));
+  console.log("✅ Version switching test complete");
+}
+
+
+/**
+ * showRouterInfo() - Display current router configuration
+ *
+ * Shows which version is active and how to switch.
+ */
+function showRouterInfo() {
+  console.log("ℹ️  ROUTER CONFIGURATION");
+  console.log("=".repeat(60));
+  console.log(`Active Version: ${ACTIVE_VERSION}`);
+  console.log(`Allow URL Override: ${ALLOW_VERSION_OVERRIDE}`);
+  console.log("");
+
+  console.log("📦 AVAILABLE VERSIONS:");
+  console.log("   • SIMPLIFIED (v4.0) - No cache, always fresh data");
+  console.log("   • OPTIMIZED (v3.1) - With cache, faster repeated requests");
+  console.log("");
+
+  console.log("🔧 TO SWITCH VERSIONS:");
+  console.log("   1. Edit Main.gs");
+  console.log(`   2. Change: const ACTIVE_VERSION = "${ACTIVE_VERSION}"`);
+  console.log("   3. Deploy → Manage Deployments → Edit → Deploy");
+  console.log("");
+
+  if (ALLOW_VERSION_OVERRIDE) {
+    console.log("🌐 URL PARAMETER OVERRIDE (ENABLED):");
+    console.log("   Add to URL: &version=simplified  or  &version=optimized");
+    console.log("   Example: ?name=Sick&days=4&version=optimized");
+  } else {
+    console.log("🌐 URL PARAMETER OVERRIDE (DISABLED):");
+    console.log("   Set ALLOW_VERSION_OVERRIDE = true to enable");
+  }
+
+  console.log("");
+  console.log("🧪 QUICK TESTS:");
+  console.log("   • testRouter() - Test current active version");
+  console.log("   • testSimplified() - Test simplified version directly");
+  console.log("   • testOptimized() - Test optimized version directly");
+  console.log("   • testBothVersions() - Compare both versions");
+  console.log("   • testVersionSwitching() - Test URL parameter switching");
+  console.log("=".repeat(60));
+}
