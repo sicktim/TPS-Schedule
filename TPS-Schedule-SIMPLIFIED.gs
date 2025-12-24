@@ -68,55 +68,19 @@
 // ║                                                                            ║
 // ║                     [SECTION 1] CONFIGURATION                              ║
 // ║                                                                            ║
-// ║  All user-configurable settings are defined here. Modify these values      ║
-// ║  to customize the script for different spreadsheets or users.              ║
+// ║  ⚠️  CONFIGURATION HAS BEEN MOVED TO Config.gs                            ║
+// ║                                                                            ║
+// ║  When using multiple .gs files, all files share the same global scope.    ║
+// ║  To avoid "already declared" errors, SEARCH_CONFIG is now defined once    ║
+// ║  in Config.gs and shared by all versions (Simplified, Optimized, etc.)    ║
+// ║                                                                            ║
+// ║  To modify settings (timezone, spreadsheet ID, etc):                      ║
+// ║  → Edit Config.gs instead of this file                                    ║
 // ║                                                                            ║
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
-const SEARCH_CONFIG = {
-  // Default name to search for (can be overridden by URL parameter)
-  searchTerm: "Sick",
-
-  // Email address for optional email reports (not used by widget)
-  recipientEmail: "your-email@gmail.com",
-
-  // The Google Sheets spreadsheet ID
-  // Found in the spreadsheet URL: https://docs.google.com/spreadsheets/d/[THIS_PART]/edit
-  spreadsheetId: "1m5-6FxgCpgjlbcYYXlFMXrJ0sgyBPFwql9sG7WDI1MU",
-
-  // Timezone for date calculations
-  // CRITICAL: This must match the user's timezone to ensure "today" is correct
-  // Common values: "America/Los_Angeles" (Pacific), "America/Denver" (Mountain),
-  //                "America/Chicago" (Central), "America/New_York" (Eastern)
-  // Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-  timezone: "America/Los_Angeles",
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 🧪 TEST MODE CONFIGURATION
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Use this to test the script with a specific date as "today"
-  // Useful during holidays or when testing with historical data
-  //
-  // USAGE:
-  // Option 1: Enable testMode and set testDate here
-  //   testMode: true,
-  //   testDate: "2025-12-15"  // Mon 15 Dec 2025
-  //
-  // Option 2: Pass testDate as URL parameter (overrides config)
-  //   ?name=Sick&days=4&testDate=2025-12-15
-  //
-  // Option 3: Use helper functions
-  //   testWithDate("2025-12-15", "Sick", 4)
-  //
-  // FORMAT: "YYYY-MM-DD" (ISO date format)
-  // EXAMPLE DATES:
-  //   "2025-12-15" = Mon 15 Dec 2025 (has events in your whiteboard)
-  //   "2025-12-16" = Tue 16 Dec 2025
-  //   "2025-12-11" = Thu 11 Dec 2025
-  //
-  testMode: false,              // Set to true to enable test mode
-  testDate: "2025-12-15"        // The date to simulate as "today"
-};
+// SEARCH_CONFIG is defined in Config.gs and shared across all files
+// Do NOT redeclare it here - just use the global SEARCH_CONFIG object
 
 
 // ╔════════════════════════════════════════════════════════════════════════════╗
