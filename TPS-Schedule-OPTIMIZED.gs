@@ -87,7 +87,33 @@ const SEARCH_CONFIG = {
   timezone: "America/Los_Angeles",
 
   // Cache configuration (NEW in v3.0)
-  cacheTTL: 600  // Cache time-to-live in seconds (600 = 10 minutes)
+  cacheTTL: 600,  // Cache time-to-live in seconds (600 = 10 minutes)
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🧪 TEST MODE CONFIGURATION (NEW in v3.1)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Use this to test the script with a specific date as "today"
+  // Useful during holidays or when testing with historical data
+  //
+  // USAGE:
+  // Option 1: Enable testMode and set testDate here
+  //   testMode: true,
+  //   testDate: "2024-12-15"  // Mon 15 Dec 2024
+  //
+  // Option 2: Pass testDate as URL parameter (overrides config)
+  //   ?name=Sick&days=4&testDate=2024-12-15
+  //
+  // Option 3: Use helper functions
+  //   testWithDate("2024-12-15", "Sick", 4)
+  //
+  // FORMAT: "YYYY-MM-DD" (ISO date format)
+  // EXAMPLE DATES:
+  //   "2024-12-15" = Mon 15 Dec 2024 (has events in your whiteboard)
+  //   "2024-12-16" = Tue 16 Dec 2024
+  //   "2024-12-11" = Thu 11 Dec 2024
+  //
+  testMode: false,              // Set to true to enable test mode
+  testDate: "2024-12-15"        // The date to simulate as "today"
 };
 
 
@@ -145,8 +171,13 @@ function doGet(e) {
     // parseInt converts string "3" to number 3
     const daysAhead = parseInt(e.parameter.days) || 3;
 
+    // 🧪 NEW: Test mode support via URL parameter
+    // e.parameter.testDate comes from "&testDate=2024-12-15" in the URL
+    // This overrides the config setting
+    const testDate = e.parameter.testDate || null;
+
     // Call our main data-fetching function
-    const results = getEventsForWidget(searchName, daysAhead);
+    const results = getEventsForWidget(searchName, daysAhead, testDate);
 
     // Return JSON response
     // ContentService is Google's way of sending HTTP responses
@@ -183,17 +214,19 @@ function doGet(e) {
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
 /**
- * getEventsForWidget(searchName, daysAhead) - Main orchestration function
+ * getEventsForWidget(searchName, daysAhead, testDate) - Main orchestration function
  *
  * ⚡ OPTIMIZATION: Opens spreadsheet ONCE and reuses for all days
  *
  * @param {string} searchName - The name to search for (e.g., "Sick", "Montes")
  * @param {number} daysAhead - How many days into the future to search
+ * @param {string} testDate - Optional test date in "YYYY-MM-DD" format (for testing)
  * @returns {Object} Structured response object (same format as original)
  */
-function getEventsForWidget(searchName, daysAhead) {
+function getEventsForWidget(searchName, daysAhead, testDate = null) {
   // STEP 1: Get the list of dates we need to search
-  const upcomingDays = getNextNWeekdays(daysAhead);
+  // 🧪 Pass testDate to use simulated "today" for testing
+  const upcomingDays = getNextNWeekdays(daysAhead, testDate);
 
   // ⚡ OPTIMIZATION #3: Open spreadsheet ONCE, reuse for all days
   const spreadsheet = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
@@ -248,7 +281,7 @@ function getEventsForWidget(searchName, daysAhead) {
 
   // STEP 6: Build and return the final response object
   // ⚡ Same format as original - no breaking changes!
-  return {
+  const response = {
     searchName: searchName,
     generatedAt: new Date().toISOString(),
     localTime: localTimeString,
@@ -259,8 +292,16 @@ function getEventsForWidget(searchName, daysAhead) {
     events: events,
     totalEvents: events.reduce((sum, day) => sum + day.events.length, 0),
     optimized: true,  // Flag to indicate this is the optimized version
-    version: "3.0"    // Version tracking
+    version: "3.1"    // Version tracking
   };
+
+  // 🧪 Add test mode info if active
+  if (testDate || SEARCH_CONFIG.testMode) {
+    response.testMode = true;
+    response.simulatedToday = testDate || SEARCH_CONFIG.testDate;
+  }
+
+  return response;
 }
 
 
@@ -415,20 +456,36 @@ function searchNameInSheetForWidget_Optimized(spreadsheet, sheetName, searchName
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
 /**
- * getNextNWeekdays(n) - Get today and the next N weekdays
+ * getNextNWeekdays(n, testDate) - Get today and the next N weekdays
  *
  * Returns an array of Date objects representing weekdays (Mon-Fri) to search.
  * Weekends are skipped. Today is included if it's a weekday.
  *
  * @param {number} n - Number of additional days after today
+ * @param {string} testDate - Optional test date in "YYYY-MM-DD" format (for testing)
  * @returns {Array<Date>} Array of Date objects
  */
-function getNextNWeekdays(n) {
+function getNextNWeekdays(n, testDate = null) {
   const weekdays = [];
 
-  // Get current date in the configured timezone
-  const now = new Date();
-  const localDateStr = Utilities.formatDate(now, SEARCH_CONFIG.timezone, "yyyy-MM-dd");
+  // 🧪 Determine which date to use as "today"
+  let localDateStr;
+
+  if (testDate) {
+    // URL parameter testDate overrides everything
+    localDateStr = testDate;
+    console.log(`🧪 TEST MODE: Using URL parameter testDate = ${testDate}`);
+  } else if (SEARCH_CONFIG.testMode) {
+    // Config testMode is enabled
+    localDateStr = SEARCH_CONFIG.testDate;
+    console.log(`🧪 TEST MODE: Using config testDate = ${SEARCH_CONFIG.testDate}`);
+  } else {
+    // Normal mode: use actual current date
+    const now = new Date();
+    localDateStr = Utilities.formatDate(now, SEARCH_CONFIG.timezone, "yyyy-MM-dd");
+    console.log(`✅ LIVE MODE: Using actual date = ${localDateStr}`);
+  }
+
   const localParts = localDateStr.split('-');
 
   let currentDate = new Date(
@@ -438,8 +495,6 @@ function getNextNWeekdays(n) {
     12, 0, 0
   );
 
-  console.log(`Server UTC time: ${now.toISOString()}`);
-  console.log(`Local time (${SEARCH_CONFIG.timezone}): ${localDateStr}`);
   console.log(`Starting from: ${currentDate.toDateString()}`);
 
   // Check if today is a weekday and include it
@@ -808,4 +863,204 @@ function clearCache() {
   const cache = CacheService.getScriptCache();
   cache.removeAll(cache.getKeys());
   console.log("✅ Cache cleared! Next request will fetch fresh data.");
+}
+
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║                                                                            ║
+// ║                     🧪 TEST MODE HELPER FUNCTIONS (NEW v3.1)               ║
+// ║                                                                            ║
+// ║  Use these functions to test the script with specific dates as "today"     ║
+// ║                                                                            ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+
+/**
+ * testWithDate() - Test the script with a specific date as "today"
+ *
+ * This is the easiest way to test with Mon 15 Dec or any other date.
+ *
+ * @param {string} testDate - Date in "YYYY-MM-DD" format (e.g., "2024-12-15")
+ * @param {string} searchName - Name to search for (default: "Sick")
+ * @param {number} daysAhead - Number of days to search (default: 4)
+ *
+ * EXAMPLES:
+ *   testWithDate("2024-12-15")                    // Mon 15 Dec, search "Sick", 4 days
+ *   testWithDate("2024-12-15", "Montes")          // Mon 15 Dec, search "Montes", 4 days
+ *   testWithDate("2024-12-15", "Sick", 3)         // Mon 15 Dec, search "Sick", 3 days
+ *   testWithDate("2024-12-16")                    // Tue 16 Dec
+ *   testWithDate("2024-12-11")                    // Thu 11 Dec
+ */
+function testWithDate(testDate, searchName = "Sick", daysAhead = 4) {
+  console.log("🧪 TEST MODE: Testing with specific date");
+  console.log("=".repeat(60));
+  console.log(`   Simulated Today: ${testDate}`);
+  console.log(`   Search Name: ${searchName}`);
+  console.log(`   Days Ahead: ${daysAhead}`);
+  console.log("");
+
+  const result = getEventsForWidget(searchName, daysAhead, testDate);
+
+  console.log("\n📊 SUMMARY:");
+  console.log(`   🧪 Test Mode: ${result.testMode ? 'ENABLED' : 'DISABLED'}`);
+  console.log(`   📅 Simulated Today: ${result.simulatedToday}`);
+  console.log(`   🔍 Search name: ${result.searchName}`);
+  console.log(`   📆 Days searched: ${result.daysSearched}`);
+  console.log(`   📅 Days with events: ${result.events.length}`);
+  console.log(`   📋 Total events: ${result.totalEvents}`);
+
+  console.log("\n🔍 SHEETS SEARCHED:");
+  result.searchedSheets.forEach(sheet => {
+    const hasEvents = sheet.eventsFound > 0 ? '✓' : '✗';
+    console.log(`   ${hasEvents} ${sheet.sheetName} (${sheet.date}): ${sheet.eventsFound} events`);
+  });
+
+  if (result.events.length > 0) {
+    console.log("\n📅 EVENTS BY DAY:");
+    result.events.forEach(day => {
+      console.log(`\n   ${day.dayName} ${day.date}:`);
+      day.events.forEach(evt => {
+        const desc = evt.description.length > 50
+          ? evt.description.substring(0, 50) + "..."
+          : evt.description;
+        console.log(`      ${evt.time || "N/A"} - ${desc}`);
+      });
+    });
+  } else {
+    console.log("\n⚠️  NO EVENTS FOUND");
+    console.log("   This could mean:");
+    console.log(`   - No events scheduled for "${searchName}" on these dates`);
+    console.log("   - The sheet names don't match the expected format");
+    console.log("   - The name is spelled differently in the sheets");
+  }
+
+  console.log("\n📋 FULL JSON RESPONSE:");
+  console.log(JSON.stringify(result, null, 2));
+
+  return result;
+}
+
+
+/**
+ * testMon15Dec() - Quick test with Mon 15 Dec 2024 as "today"
+ *
+ * This is a shortcut for testing with the date that has events in your whiteboard.
+ * Run this during holidays or when testing.
+ */
+function testMon15Dec() {
+  console.log("🧪 QUICK TEST: Mon 15 Dec 2024");
+  console.log("=".repeat(60));
+  return testWithDate("2024-12-15", "Sick", 4);
+}
+
+
+/**
+ * testWebRequestWithDate() - Simulate a web request with test date
+ *
+ * Simulates what happens when the widget calls your API with a testDate parameter.
+ *
+ * @param {string} testDate - Date in "YYYY-MM-DD" format
+ * @param {string} searchName - Name to search for (default: "Sick")
+ * @param {number} daysAhead - Number of days to search (default: 4)
+ *
+ * EXAMPLE:
+ *   testWebRequestWithDate("2024-12-15")
+ *   testWebRequestWithDate("2024-12-15", "Montes", 3)
+ */
+function testWebRequestWithDate(testDate, searchName = "Sick", daysAhead = 4) {
+  const mockEvent = {
+    parameter: {
+      name: searchName,
+      days: daysAhead.toString(),
+      testDate: testDate
+    }
+  };
+
+  console.log("🧪 Simulating Web Request with Test Date");
+  console.log("=".repeat(60));
+  console.log(`\nSimulated URL: ?name=${searchName}&days=${daysAhead}&testDate=${testDate}\n`);
+
+  const response = doGet(mockEvent);
+  const content = response.getContent();
+  const parsed = JSON.parse(content);
+
+  if (parsed.error) {
+    console.log("❌ ERROR:");
+    console.log(`   Message: ${parsed.message}`);
+    console.log(`   Stack: ${parsed.stack}`);
+  } else {
+    console.log("✅ SUCCESS:");
+    console.log(`   🧪 Test Mode: ${parsed.testMode ? 'ENABLED' : 'DISABLED'}`);
+    console.log(`   📅 Simulated Today: ${parsed.simulatedToday || 'N/A'}`);
+    console.log(`   🔍 Search name: ${parsed.searchName}`);
+    console.log(`   📋 Total events: ${parsed.totalEvents}`);
+    console.log(`   📦 Version: ${parsed.version} (${parsed.optimized ? 'OPTIMIZED' : 'ORIGINAL'})`);
+
+    console.log("\n🔍 SHEETS SEARCHED:");
+    parsed.searchedSheets.forEach(sheet => {
+      const hasEvents = sheet.eventsFound > 0 ? '✓' : '✗';
+      console.log(`   ${hasEvents} ${sheet.sheetName}: ${sheet.eventsFound} events`);
+    });
+
+    if (parsed.events.length > 0) {
+      console.log("\n📅 EVENTS FOUND:");
+      parsed.events.forEach(day => {
+        console.log(`   ${day.dayName} (${day.date}): ${day.events.length} events`);
+      });
+    }
+
+    console.log("\n📋 FULL RESPONSE:");
+    console.log(JSON.stringify(parsed, null, 2));
+  }
+
+  return parsed;
+}
+
+
+/**
+ * compareTestVsLive() - Compare results with test date vs live date
+ *
+ * Useful for understanding why results differ between test and production.
+ *
+ * @param {string} testDate - Date in "YYYY-MM-DD" format (e.g., "2024-12-15")
+ * @param {string} searchName - Name to search for (default: "Sick")
+ */
+function compareTestVsLive(testDate = "2024-12-15", searchName = "Sick") {
+  console.log("🧪 COMPARISON: Test Date vs Live Date");
+  console.log("=".repeat(60));
+
+  // Get results with test date
+  console.log(`\n📅 FETCHING WITH TEST DATE: ${testDate}`);
+  const testResults = getEventsForWidget(searchName, 4, testDate);
+
+  console.log(`\n📅 FETCHING WITH LIVE DATE (actual today)`);
+  const liveResults = getEventsForWidget(searchName, 4, null);
+
+  console.log("\n" + "=".repeat(60));
+  console.log("📊 COMPARISON RESULTS:");
+  console.log("=".repeat(60));
+
+  console.log(`\n🧪 TEST MODE (${testDate}):`);
+  console.log(`   Sheets searched: ${testResults.searchedSheets.map(s => s.sheetName).join(', ')}`);
+  console.log(`   Events found: ${testResults.totalEvents}`);
+
+  console.log(`\n✅ LIVE MODE (actual today):`);
+  console.log(`   Sheets searched: ${liveResults.searchedSheets.map(s => s.sheetName).join(', ')}`);
+  console.log(`   Events found: ${liveResults.totalEvents}`);
+
+  console.log("\n💡 INSIGHT:");
+  if (testResults.totalEvents > 0 && liveResults.totalEvents === 0) {
+    console.log(`   ✅ Test date has events, live date has none`);
+    console.log(`   → This is expected during holidays or off-schedule periods`);
+    console.log(`   → Use test mode to verify the script works correctly`);
+  } else if (testResults.totalEvents === 0 && liveResults.totalEvents > 0) {
+    console.log(`   ✅ Live date has events, test date has none`);
+    console.log(`   → The test date you chose doesn't have scheduled events`);
+  } else if (testResults.totalEvents === 0 && liveResults.totalEvents === 0) {
+    console.log(`   ⚠️  Neither test nor live dates have events`);
+    console.log(`   → Try a different test date with known events`);
+  } else {
+    console.log(`   ✅ Both test and live dates have events`);
+  }
+
+  return { testResults, liveResults };
 }
