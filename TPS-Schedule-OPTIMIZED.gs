@@ -108,12 +108,12 @@ const SEARCH_CONFIG = {
   //
   // FORMAT: "YYYY-MM-DD" (ISO date format)
   // EXAMPLE DATES:
-  //   "2024-12-15" = Mon 15 Dec 2024 (has events in your whiteboard)
-  //   "2024-12-16" = Tue 16 Dec 2024
-  //   "2024-12-11" = Thu 11 Dec 2024
+  //   "2025-12-15" = Mon 15 Dec 2025 (has events in your whiteboard)
+  //   "2025-12-16" = Tue 16 Dec 2025
+  //   "2025-12-11" = Thu 11 Dec 2025
   //
   testMode: false,              // Set to true to enable test mode
-  testDate: "2024-12-15"        // The date to simulate as "today"
+  testDate: "2025-12-15"        // The date to simulate as "today"
 };
 
 
@@ -884,11 +884,11 @@ function clearCache() {
  * @param {number} daysAhead - Number of days to search (default: 4)
  *
  * EXAMPLES:
- *   testWithDate("2024-12-15")                    // Mon 15 Dec, search "Sick", 4 days
- *   testWithDate("2024-12-15", "Montes")          // Mon 15 Dec, search "Montes", 4 days
- *   testWithDate("2024-12-15", "Sick", 3)         // Mon 15 Dec, search "Sick", 3 days
- *   testWithDate("2024-12-16")                    // Tue 16 Dec
- *   testWithDate("2024-12-11")                    // Thu 11 Dec
+ *   testWithDate("2025-12-15")                    // Mon 15 Dec, search "Sick", 4 days
+ *   testWithDate("2025-12-15", "Montes")          // Mon 15 Dec, search "Montes", 4 days
+ *   testWithDate("2025-12-15", "Sick", 3)         // Mon 15 Dec, search "Sick", 3 days
+ *   testWithDate("2025-12-16")                    // Tue 16 Dec
+ *   testWithDate("2025-12-11")                    // Thu 11 Dec
  */
 function testWithDate(testDate, searchName = "Sick", daysAhead = 4) {
   console.log("🧪 TEST MODE: Testing with specific date");
@@ -941,15 +941,15 @@ function testWithDate(testDate, searchName = "Sick", daysAhead = 4) {
 
 
 /**
- * testMon15Dec() - Quick test with Mon 15 Dec 2024 as "today"
+ * testMon15Dec() - Quick test with Mon 15 Dec 2025 as "today"
  *
  * This is a shortcut for testing with the date that has events in your whiteboard.
  * Run this during holidays or when testing.
  */
 function testMon15Dec() {
-  console.log("🧪 QUICK TEST: Mon 15 Dec 2024");
+  console.log("🧪 QUICK TEST: Mon 15 Dec 2025");
   console.log("=".repeat(60));
-  return testWithDate("2024-12-15", "Sick", 4);
+  return testWithDate("2025-12-15", "Sick", 4);
 }
 
 
