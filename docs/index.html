@@ -38,7 +38,7 @@
         .badge-supervision { background: #8b5cf6; }
         .badge-other { background: #3b82f6; }
 
-        .status-cancelled { background: #ef4444; opacity: 0.6; text-decoration: line-through; }
+        .status-cancelled { background: #ef4444; opacity: 0.8; }
         .status-effective { background: transparent; }
         .status-partial { background: #f59e0b; opacity: 0.8; }
 
@@ -238,7 +238,7 @@
         };
 
         // Event display component
-        function EventCard({ event, dayDate }) {
+        function EventCard({ event, dayDate, eventId, isExpanded, onToggle }) {
             const parsed = parseEvent(event);
             const time = getEventTime(event);
 
@@ -253,9 +253,13 @@
             }
 
             return (
-                <div className={`glass-card rounded-lg p-3 ${parsed.colorClass} ${statusClass}`}>
+                <div
+                    className={`glass-card rounded-lg p-3 ${parsed.colorClass} ${statusClass} cursor-pointer transition-all`}
+                    onClick={onToggle}
+                >
                     {/* Header with time and type */}
                     <div className="flex items-center gap-2 mb-2">
+                        <span className="text-gray-400 text-sm">{isExpanded ? '▼' : '▶'}</span>
                         {time && (
                             <span className="text-white font-medium text-sm">{time}</span>
                         )}
@@ -274,16 +278,15 @@
                         )}
                     </div>
 
-                    {/* Enhanced content */}
-                    {parsed.enhanced ? (
+                    {/* Enhanced content - only show when expanded */}
+                    {isExpanded && (parsed.enhanced ? (
                         <div className="text-sm space-y-1">
                             {/* Flying Events */}
                             {parsed.enhanced.section === 'Flying Events' && (
                                 <>
                                     <div className="text-white font-medium">{parsed.enhanced.model} - {parsed.enhanced.event}</div>
-                                    <div className="text-gray-400 text-xs leading-relaxed">
-                                        <div>Brief: {parsed.enhanced.briefStart} → ETD: {parsed.enhanced.etd} → ETA: {parsed.enhanced.eta}</div>
-                                        <div>Debrief End: {parsed.enhanced.debriefEnd}</div>
+                                    <div className="text-gray-400 text-xs">
+                                        Br {parsed.enhanced.briefStart} • ETD {parsed.enhanced.etd} • ETA {parsed.enhanced.eta} • End {parsed.enhanced.debriefEnd}
                                     </div>
                                     {parsed.enhanced.crew.length > 0 && (
                                         <div className="text-gray-300 text-sm">
@@ -349,7 +352,7 @@
                                 </span>
                             ))}
                         </div>
-                    )}
+                    ))}
                 </div>
             );
         }
@@ -362,6 +365,10 @@
             const [error, setError] = useState(null);
             const [showSettings, setShowSettings] = useState(false);
             const [lastUpdated, setLastUpdated] = useState(null);
+            const [expandedEvents, setExpandedEvents] = useState(new Set());
+            const [pullStart, setPullStart] = useState(0);
+            const [pullDistance, setPullDistance] = useState(0);
+            const [isPulling, setIsPulling] = useState(false);
 
             const debounceTimerRef = useRef(null);
             const currentRequestRef = useRef(null);
@@ -465,6 +472,45 @@
                 fetchSchedule(inputNameRef.current);
             };
 
+            // Toggle event expansion
+            const toggleEventExpansion = (eventId) => {
+                setExpandedEvents(prev => {
+                    const newSet = new Set(prev);
+                    if (newSet.has(eventId)) {
+                        newSet.delete(eventId);
+                    } else {
+                        newSet.add(eventId);
+                    }
+                    return newSet;
+                });
+            };
+
+            // Pull-to-refresh handlers
+            const handleTouchStart = (e) => {
+                if (window.scrollY === 0) {
+                    setPullStart(e.touches[0].clientY);
+                    setIsPulling(true);
+                }
+            };
+
+            const handleTouchMove = (e) => {
+                if (isPulling && window.scrollY === 0) {
+                    const distance = e.touches[0].clientY - pullStart;
+                    if (distance > 0) {
+                        setPullDistance(Math.min(distance, 100));
+                    }
+                }
+            };
+
+            const handleTouchEnd = () => {
+                if (pullDistance > 60) {
+                    fetchSchedule(config.searchName);
+                }
+                setPullDistance(0);
+                setIsPulling(false);
+                setPullStart(0);
+            };
+
             // Initial fetch and auto-refresh
             useEffect(() => {
                 fetchSchedule(config.searchName);
@@ -490,7 +536,24 @@
             };
 
             return (
-                <div className="max-w-md mx-auto">
+                <div
+                    className="max-w-md mx-auto"
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                >
+                    {/* Pull to refresh indicator */}
+                    {pullDistance > 0 && (
+                        <div
+                            className="flex justify-center items-center py-2 transition-opacity"
+                            style={{ opacity: pullDistance / 60 }}
+                        >
+                            <span className="text-blue-400 text-sm">
+                                {pullDistance > 60 ? '↓ Release to refresh' : '↓ Pull to refresh'}
+                            </span>
+                        </div>
+                    )}
+
                     {/* Header */}
                     <div className="flex items-center justify-between mb-4">
                         <h1 className="text-xl font-semibold text-white">Squadron Schedule</h1>
@@ -657,9 +720,19 @@
 
                                     {/* Events for this day */}
                                     <div className="space-y-2">
-                                        {day.events.map((event, eventIndex) => (
-                                            <EventCard key={`${day.date}-${eventIndex}`} event={event} dayDate={day.date} />
-                                        ))}
+                                        {day.events.map((event, eventIndex) => {
+                                            const eventId = `${day.date}-${eventIndex}`;
+                                            return (
+                                                <EventCard
+                                                    key={eventId}
+                                                    event={event}
+                                                    dayDate={day.date}
+                                                    eventId={eventId}
+                                                    isExpanded={expandedEvents.has(eventId)}
+                                                    onToggle={() => toggleEventExpansion(eventId)}
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             ))}
