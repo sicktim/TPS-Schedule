@@ -242,6 +242,24 @@
             const parsed = parseEvent(event);
             const time = getEventTime(event);
 
+            // Get event title based on section
+            const getEventTitle = () => {
+                if (!parsed.enhanced) return parsed.parts[0] || '';
+
+                switch (parsed.enhanced.section) {
+                    case 'Flying Events':
+                        return `${parsed.enhanced.model} - ${parsed.enhanced.event}`;
+                    case 'Ground Events':
+                        return parsed.enhanced.event;
+                    case 'Supervision':
+                        return parsed.enhanced.duty;
+                    case 'NA':
+                        return parsed.enhanced.reason;
+                    default:
+                        return '';
+                }
+            };
+
             // Determine status styling
             let statusClass = '';
             if (parsed.enhanced?.status) {
@@ -257,8 +275,8 @@
                     className={`glass-card rounded-lg p-3 ${parsed.colorClass} ${statusClass} cursor-pointer transition-all`}
                     onClick={onToggle}
                 >
-                    {/* Header with time and type */}
-                    <div className="flex items-center gap-2 mb-2">
+                    {/* Header with time, type, and event title */}
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className="text-gray-400 text-sm">{isExpanded ? '▼' : '▶'}</span>
                         {time && (
                             <span className="text-white font-medium text-sm">{time}</span>
@@ -276,6 +294,7 @@
                                 PARTIAL
                             </span>
                         )}
+                        <span className="text-white text-sm font-medium">{getEventTitle()}</span>
                     </div>
 
                     {/* Enhanced content - only show when expanded */}
@@ -284,7 +303,6 @@
                             {/* Flying Events */}
                             {parsed.enhanced.section === 'Flying Events' && (
                                 <>
-                                    <div className="text-white font-medium">{parsed.enhanced.model} - {parsed.enhanced.event}</div>
                                     <div className="text-gray-400 text-xs">
                                         Br {parsed.enhanced.briefStart} • ETD {parsed.enhanced.etd} • ETA {parsed.enhanced.eta} • End {parsed.enhanced.debriefEnd}
                                     </div>
@@ -302,7 +320,6 @@
                             {/* Ground Events */}
                             {parsed.enhanced.section === 'Ground Events' && (
                                 <>
-                                    <div className="text-white font-medium">{parsed.enhanced.event}</div>
                                     <div className="text-gray-400 text-xs">
                                         {parsed.enhanced.start} - {parsed.enhanced.end}
                                     </div>
@@ -317,7 +334,6 @@
                             {/* Supervision */}
                             {parsed.enhanced.section === 'Supervision' && (
                                 <>
-                                    <div className="text-white font-medium">{parsed.enhanced.duty}</div>
                                     <div className="text-gray-300">POC: {parsed.enhanced.poc}</div>
                                     {!parsed.enhanced.isAuth && (
                                         <div className="text-gray-400 text-xs">
@@ -330,7 +346,6 @@
                             {/* NA (Non-Availability) */}
                             {parsed.enhanced.section === 'NA' && (
                                 <>
-                                    <div className="text-white font-medium">{parsed.enhanced.reason}</div>
                                     <div className="text-gray-400 text-xs">
                                         {parsed.enhanced.start} - {parsed.enhanced.end}
                                     </div>
@@ -740,9 +755,10 @@
                     )}
 
                     {/* Footer */}
-                    <div className="mt-6 text-center text-xs text-gray-600">
+                    <div className="mt-6 text-center text-xs text-gray-600 space-y-1">
                         <p>Auto-refreshes every 15 minutes</p>
-                        <p className="mt-1">Add to home screen for quick access</p>
+                        <p>Add to home screen for quick access</p>
+                        <p className="text-gray-700">v5.0 • Built: 2025-12-25 04:15</p>
                     </div>
                 </div>
             );
