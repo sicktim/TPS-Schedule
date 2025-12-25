@@ -78,6 +78,32 @@ const ALLOW_VERSION_OVERRIDE = true;
  */
 function doGet(e) {
   try {
+    const searchName = e.parameter.name || SEARCH_CONFIG.searchTerm;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // INSTANT CACHE RETRIEVAL (Batch Processing System)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Try to get pre-processed data from cache first (FAST!)
+    // Falls back to real-time processing if cache miss
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const cache = CacheService.getScriptCache();
+    const cacheKey = `schedule_${searchName}`;
+    const cached = cache.get(cacheKey);
+
+    if (cached) {
+      console.log(`⚡ CACHE HIT for ${searchName} - instant return (<100ms)`);
+      return ContentService
+        .createTextOutput(cached)
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    console.log(`⏱ CACHE MISS for ${searchName} - processing in real-time (~30s)`);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // VERSION ROUTING (for cache misses or when batch processing disabled)
+    // ═══════════════════════════════════════════════════════════════════════
+
     // Determine which version to use
     let selectedVersion = ACTIVE_VERSION;
 
@@ -109,12 +135,13 @@ function doGet(e) {
     }
 
     // Route to the appropriate implementation
+    let result;
     if (selectedVersion === "SIMPLIFIED") {
-      return doGet_Simplified(e);
+      result = doGet_Simplified(e);
     } else if (selectedVersion === "OPTIMIZED") {
-      return doGet_Optimized(e);
+      result = doGet_Optimized(e);
     } else if (selectedVersion === "ENHANCED") {
-      return doGet_Enhanced(e);
+      result = doGet_Enhanced(e);
     } else {
       // Invalid ACTIVE_VERSION configuration
       return ContentService
@@ -125,6 +152,21 @@ function doGet(e) {
         }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+
+    // Cache the result for next time (if it's a successful response)
+    try {
+      const resultText = result.getContent();
+      const resultJson = JSON.parse(resultText);
+
+      if (!resultJson.error && resultJson.events) {
+        console.log(`💾 Caching result for ${searchName}`);
+        cache.put(cacheKey, resultText, 21600); // 6 hours
+      }
+    } catch (e) {
+      console.warn('Could not cache result:', e);
+    }
+
+    return result;
 
   } catch (error) {
     // Catch any routing errors
