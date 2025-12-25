@@ -189,14 +189,15 @@ function batchProcessAllSchedules() {
 
 /**
  * Get list of sheets to process (today + next 4 days)
+ * @param {Date} startDate - Optional: Start date (default: today)
  */
-function getRelevantSheets() {
+function getRelevantSheets(startDate) {
   const sheets = [];
   const ss = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
   const allSheets = ss.getSheets();
 
-  // Get today + next 4 days
-  const today = new Date();
+  // Get today + next 4 days (or from specified start date)
+  const today = startDate || new Date();
 
   for (let i = 0; i < 5; i++) {
     const targetDate = new Date(today);
@@ -633,5 +634,54 @@ function getBatchMetadata() {
     console.log(JSON.parse(metadata));
   } else {
     console.log('No batch metadata found');
+  }
+}
+
+/**
+ * Test batch processor with FIXED TEST DATES (Dec 15-19, 2025)
+ * Use this during development/testing when today's sheets don't exist
+ */
+function testBatchProcessorWithTestDates() {
+  console.log('=== Testing Batch Processor (Fixed Test Dates: Dec 15-19, 2025) ===\n');
+
+  // Override getRelevantSheets to use test dates
+  const originalGetRelevantSheets = getRelevantSheets;
+
+  // Temporarily replace with test date version
+  getRelevantSheets = function() {
+    const testStartDate = new Date('2025-12-15'); // Monday, Dec 15, 2025
+    return originalGetRelevantSheets(testStartDate);
+  };
+
+  try {
+    const result = batchProcessAllSchedules();
+
+    console.log('\n=== Detailed Sheet Metrics ===');
+    result.sheetMetrics.forEach(sm => {
+      console.log(`${sm.sheet}: ${sm.duration.toFixed(2)}s, ${sm.eventsFound} events`);
+    });
+
+    console.log('\n=== Top 10 Largest Caches ===');
+    const sortedPeople = result.personMetrics.sort((a, b) => b.sizeKB - a.sizeKB);
+    sortedPeople.slice(0, 10).forEach(pm => {
+      console.log(`${pm.name}: ${pm.sizeKB} KB, ${pm.events} events`);
+    });
+
+    console.log('\n=== Cache Size Analysis ===');
+    const totalSizeMB = result.cacheSize / 1024 / 1024;
+    const avgSizeKB = result.cacheSize / result.peopleProcessed / 1024;
+    const maxSizeKB = Math.max(...result.personMetrics.map(p => p.sizeKB));
+
+    console.log(`Total: ${totalSizeMB.toFixed(2)} MB`);
+    console.log(`Average: ${avgSizeKB.toFixed(2)} KB per person`);
+    console.log(`Maximum: ${maxSizeKB.toFixed(2)} KB`);
+    console.log(`CacheService limit: 1024 KB per entry, 10 MB total`);
+    console.log(`Within limits: ${maxSizeKB < 1024 ? 'YES ✓' : 'NO ✗'}`);
+
+    return result;
+
+  } finally {
+    // Restore original function
+    getRelevantSheets = originalGetRelevantSheets;
   }
 }
