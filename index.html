@@ -10,34 +10,38 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
-        
+
         * {
             font-family: 'JetBrains Mono', monospace;
         }
-        
+
         body {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
             min-height: 100vh;
         }
-        
+
         .glass-card {
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        
+
         .event-flying { border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.1); }
         .event-ground { border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.1); }
         .event-na { border-left: 3px solid #ef4444; background: rgba(239, 68, 68, 0.1); }
         .event-supervision { border-left: 3px solid #8b5cf6; background: rgba(139, 92, 246, 0.1); }
         .event-other { border-left: 3px solid #3b82f6; background: rgba(59, 130, 246, 0.1); }
-        
+
         .badge-flying { background: #10b981; }
         .badge-ground { background: #f59e0b; }
         .badge-na { background: #ef4444; }
         .badge-supervision { background: #8b5cf6; }
         .badge-other { background: #3b82f6; }
-        
+
+        .status-cancelled { background: #ef4444; opacity: 0.6; text-decoration: line-through; }
+        .status-effective { background: transparent; }
+        .status-partial { background: #f59e0b; opacity: 0.8; }
+
         .spinner {
             border: 2px solid rgba(255, 255, 255, 0.1);
             border-top: 2px solid #3b82f6;
@@ -46,21 +50,21 @@
             height: 20px;
             animation: spin 1s linear infinite;
         }
-        
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
+
         .fade-in {
             animation: fadeIn 0.3s ease-in-out;
         }
-        
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        
+
         /* Custom scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
@@ -69,31 +73,30 @@
 </head>
 <body class="text-gray-100 p-4">
     <div id="root"></div>
-    
+
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
+
     <script type="text/babel">
         const { useState, useEffect, useCallback, useRef } = React;
-        
+
         // Default configuration
         const DEFAULT_CONFIG = {
             searchName: 'Sick',
-            daysAhead: 4, // Changed from 3 to 4 to include today + 3 more days
-            webAppUrl: 'https://script.google.com/macros/s/AKfycbxCyvRBsI--rXoYZdsHbdjCvHzLjKUIoDS8tebeWevwg87ULGMFzepM-H73x0JXcSs3/exec'
+            daysAhead: 4,
+            webAppUrl: 'https://script.google.com/macros/s/AKfycbzviTC3JlrGVlKqVTGHhzyfUKfc-9rKLFUgqRpyVKARSJN2CqesnFKe8GEAqXWjw-Tz/exec',
+            version: 'enhanced',
+            testMode: false,
+            testDate: '2025-12-15'
         };
-        
+
         // Load config from localStorage
         const loadConfig = () => {
             try {
                 const saved = localStorage.getItem('scheduleWidgetConfig');
                 if (saved) {
                     const parsed = JSON.parse(saved);
-                    // Ensure daysAhead is at least 4 to include today
-                    if (parsed.daysAhead < 4) {
-                        parsed.daysAhead = 4;
-                    }
                     return { ...DEFAULT_CONFIG, ...parsed };
                 }
             } catch (e) {
@@ -101,7 +104,7 @@
             }
             return DEFAULT_CONFIG;
         };
-        
+
         // Save config to localStorage
         const saveConfig = (config) => {
             try {
@@ -110,24 +113,51 @@
                 console.error('Error saving config:', e);
             }
         };
-        
-        // Parse event description and determine type
-        const parseEventDescription = (description, rangeSource) => {
-            const parts = description.split('|')
+
+        // Parse event - check for enhanced data first
+        const parseEvent = (event) => {
+            if (event.enhanced) {
+                const enh = event.enhanced;
+                const section = enh.section;
+
+                let type, colorClass, badgeClass;
+
+                if (section === 'Flying Events') {
+                    type = 'Flying';
+                    colorClass = 'event-flying';
+                    badgeClass = 'badge-flying';
+                } else if (section === 'Ground Events') {
+                    type = 'Ground';
+                    colorClass = 'event-ground';
+                    badgeClass = 'badge-ground';
+                } else if (section === 'NA') {
+                    type = 'N/A';
+                    colorClass = 'event-na';
+                    badgeClass = 'badge-na';
+                } else if (section === 'Supervision') {
+                    type = 'Supervision';
+                    colorClass = 'event-supervision';
+                    badgeClass = 'badge-supervision';
+                } else {
+                    type = 'Other';
+                    colorClass = 'event-other';
+                    badgeClass = 'badge-other';
+                }
+
+                return { enhanced: enh, type, colorClass, badgeClass };
+            }
+
+            // Fallback: parse legacy format
+            const parts = event.description.split('|')
                 .map(p => p.trim())
-                .filter(p => {
-                    if (!p) return false;
-                    const lower = p.toLowerCase();
-                    if (lower === 'true' || lower === 'false') return false;
-                    return true;
-                });
-            
-            let type = 'other';
+                .filter(p => p && p.toLowerCase() !== 'true' && p.toLowerCase() !== 'false');
+
+            let type = 'Other';
             let colorClass = 'event-other';
             let badgeClass = 'badge-other';
-            
-            if (rangeSource) {
-                const source = rangeSource.toLowerCase();
+
+            if (event.rangeSource) {
+                const source = event.rangeSource.toLowerCase();
                 if (source.includes('flying')) {
                     type = 'Flying';
                     colorClass = 'event-flying';
@@ -136,7 +166,7 @@
                     type = 'Ground';
                     colorClass = 'event-ground';
                     badgeClass = 'badge-ground';
-                } else if (source.includes('not available') || source.includes('n/a')) {
+                } else if (source.includes('not available')) {
                     type = 'N/A';
                     colorClass = 'event-na';
                     badgeClass = 'badge-na';
@@ -146,62 +176,59 @@
                     badgeClass = 'badge-supervision';
                 }
             }
-            
+
             return { parts, type, colorClass, badgeClass };
         };
-        
-        // Convert time string to minutes for sorting (e.g., "07:30" → 450, "12:00" → 720)
-        // Events without times are sorted to the end
+
+        // Get display time from event
+        const getEventTime = (event) => {
+            if (event.enhanced) {
+                const enh = event.enhanced;
+                if (enh.section === 'Flying Events') return enh.briefStart;
+                if (enh.section === 'Ground Events') return enh.start;
+                if (enh.section === 'Supervision') return enh.start;
+                if (enh.section === 'NA') return enh.start;
+            }
+            return event.time;
+        };
+
+        // Convert time string to minutes for sorting
         const timeToMinutes = (timeStr) => {
-            if (!timeStr) return 9999; // No time = sort to end
-            
-            // Handle HH:MM format
+            if (!timeStr) return 9999;
             const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
             if (match) {
-                const hours = parseInt(match[1], 10);
-                const minutes = parseInt(match[2], 10);
-                return hours * 60 + minutes;
+                return parseInt(match[1]) * 60 + parseInt(match[2]);
             }
-            
-            // Handle HHMM format (e.g., "0730")
-            const match4 = timeStr.match(/^(\d{2})(\d{2})$/);
-            if (match4) {
-                const hours = parseInt(match4[1], 10);
-                const minutes = parseInt(match4[2], 10);
-                return hours * 60 + minutes;
-            }
-            
-            return 9999; // Unknown format = sort to end
+            return 9999;
         };
-        
-        // Sort events within each day by time (earliest first)
+
+        // Sort events by time
         const sortEventsByTime = (eventsData) => {
             return eventsData.map(day => ({
                 ...day,
                 events: [...day.events].sort((a, b) => {
-                    return timeToMinutes(a.time) - timeToMinutes(b.time);
+                    return timeToMinutes(getEventTime(a)) - timeToMinutes(getEventTime(b));
                 })
             }));
         };
-        
+
         // Get relative day label
         const getRelativeDay = (dateStr) => {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            
+
             const eventDate = new Date(dateStr + 'T00:00:00');
             eventDate.setHours(0, 0, 0, 0);
-            
-            const diffTime = eventDate.getTime() - today.getTime();
-            const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-            
+
+            const diffDays = Math.round((eventDate - today) / (1000 * 60 * 60 * 24));
+
             if (diffDays === 0) return 'Today';
             if (diffDays === 1) return 'Tomorrow';
             if (diffDays === -1) return 'Yesterday';
-            
+
             return eventDate.toLocaleDateString('en-US', { weekday: 'long' });
         };
-        
+
         // Format date for display
         const formatDate = (dateStr, dayName) => {
             const date = new Date(dateStr + 'T00:00:00');
@@ -209,7 +236,123 @@
             const day = date.getDate();
             return `${dayName} ${month} ${day}`;
         };
-        
+
+        // Event display component
+        function EventCard({ event, dayDate }) {
+            const parsed = parseEvent(event);
+            const time = getEventTime(event);
+
+            // Determine status styling
+            let statusClass = '';
+            if (parsed.enhanced?.status) {
+                if (parsed.enhanced.status.cancelled) {
+                    statusClass = 'status-cancelled';
+                } else if (parsed.enhanced.status.partiallyEffective) {
+                    statusClass = 'status-partial';
+                }
+            }
+
+            return (
+                <div className={`glass-card rounded-lg p-3 ${parsed.colorClass} ${statusClass}`}>
+                    {/* Header with time and type */}
+                    <div className="flex items-center gap-2 mb-2">
+                        {time && (
+                            <span className="text-white font-medium text-sm">{time}</span>
+                        )}
+                        <span className={`text-xs px-2 py-0.5 rounded ${parsed.badgeClass} text-white`}>
+                            {parsed.type}
+                        </span>
+                        {parsed.enhanced?.status?.cancelled && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-red-600 text-white">
+                                CANCELLED
+                            </span>
+                        )}
+                        {parsed.enhanced?.status?.partiallyEffective && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-orange-600 text-white">
+                                PARTIAL
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Enhanced content */}
+                    {parsed.enhanced ? (
+                        <div className="text-sm space-y-1">
+                            {/* Flying Events */}
+                            {parsed.enhanced.section === 'Flying Events' && (
+                                <>
+                                    <div className="text-white font-medium">{parsed.enhanced.model} - {parsed.enhanced.event}</div>
+                                    <div className="text-gray-400 text-xs">
+                                        ETD: {parsed.enhanced.etd} | ETA: {parsed.enhanced.eta} | Debrief: {parsed.enhanced.debriefEnd}
+                                    </div>
+                                    {parsed.enhanced.crew.length > 0 && (
+                                        <div className="text-gray-300">
+                                            Crew: {parsed.enhanced.crew.join(', ')}
+                                        </div>
+                                    )}
+                                    {parsed.enhanced.notes && (
+                                        <div className="text-gray-400 text-xs italic">{parsed.enhanced.notes}</div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Ground Events */}
+                            {parsed.enhanced.section === 'Ground Events' && (
+                                <>
+                                    <div className="text-white font-medium">{parsed.enhanced.event}</div>
+                                    <div className="text-gray-400 text-xs">
+                                        {parsed.enhanced.start} - {parsed.enhanced.end}
+                                    </div>
+                                    {parsed.enhanced.people.length > 0 && (
+                                        <div className="text-gray-300">
+                                            {parsed.enhanced.people.join(', ')}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Supervision */}
+                            {parsed.enhanced.section === 'Supervision' && (
+                                <>
+                                    <div className="text-white font-medium">{parsed.enhanced.duty}</div>
+                                    <div className="text-gray-300">POC: {parsed.enhanced.poc}</div>
+                                    {!parsed.enhanced.isAuth && (
+                                        <div className="text-gray-400 text-xs">
+                                            {parsed.enhanced.start} - {parsed.enhanced.end}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* NA (Non-Availability) */}
+                            {parsed.enhanced.section === 'NA' && (
+                                <>
+                                    <div className="text-white font-medium">{parsed.enhanced.reason}</div>
+                                    <div className="text-gray-400 text-xs">
+                                        {parsed.enhanced.start} - {parsed.enhanced.end}
+                                    </div>
+                                    {parsed.enhanced.people.length > 0 && (
+                                        <div className="text-gray-300">
+                                            {parsed.enhanced.people.join(', ')}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    ) : (
+                        /* Legacy fallback */
+                        <div className="text-sm text-gray-300">
+                            {parsed.parts.map((part, i) => (
+                                <span key={i}>
+                                    {i > 0 && <span className="text-gray-600 mx-1">•</span>}
+                                    {part}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         // Main App Component
         function App() {
             const [config, setConfig] = useState(loadConfig);
@@ -218,125 +361,117 @@
             const [error, setError] = useState(null);
             const [showSettings, setShowSettings] = useState(false);
             const [lastUpdated, setLastUpdated] = useState(null);
-            
-            // Refs for debouncing and request cancellation
+
             const debounceTimerRef = useRef(null);
             const currentRequestRef = useRef(null);
             const inputNameRef = useRef(config.searchName);
-            
-            // Fetch schedule from web app - with request tracking
+
+            // Fetch schedule
             const fetchSchedule = useCallback(async (searchName) => {
                 if (!searchName || !config.webAppUrl) {
                     setEvents([]);
                     return;
                 }
-                
-                // Create a unique request ID
+
                 const requestId = Date.now();
                 currentRequestRef.current = requestId;
-                
+
                 setLoading(true);
                 setError(null);
-                
+
                 try {
-                    //const url = `${config.webAppUrl}?name=${encodeURIComponent(searchName)}&days=${config.daysAhead}&_t=${requestId}`;
-                    const url = `${config.webAppUrl}?name=${searchName}&days=${config.daysAhead}&testDate=2025-12-15`;
+                    // Build URL with parameters
+                    let url = `${config.webAppUrl}?name=${encodeURIComponent(searchName)}&days=${config.daysAhead}`;
+
+                    // Add version parameter
+                    if (config.version) {
+                        url += `&version=${config.version}`;
+                    }
+
+                    // Add test date if test mode is enabled
+                    if (config.testMode && config.testDate) {
+                        url += `&testDate=${config.testDate}`;
+                    }
+
+                    url += `&_t=${requestId}`;
+
                     console.log('Fetching:', url);
-                    
+
                     const response = await fetch(url);
-                    
-                    // Check if this request is still the current one
+
                     if (currentRequestRef.current !== requestId) {
-                        console.log('Ignoring stale response for:', searchName);
+                        console.log('Ignoring stale response');
                         return;
                     }
-                    
+
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
-                    
+
                     const data = await response.json();
                     console.log('Received data:', data);
-                    
-                    // Double-check this is still the current request
+
                     if (currentRequestRef.current !== requestId) {
-                        console.log('Ignoring stale response (post-parse) for:', searchName);
+                        console.log('Ignoring stale response (post-parse)');
                         return;
                     }
-                    
+
                     if (data.events) {
-                        console.log('Events received from server:');
-                        console.log('Search name:', data.searchName);
-                        console.log('Number of days:', data.events.length);
-                        data.events.forEach(day => {
-                            console.log(`  ${day.date} (${day.dayName}): ${day.events.length} events`);
-                        });
-                        
-                        // Sort events within each day by time (earliest first)
                         const sortedEvents = sortEventsByTime(data.events);
-                        
                         setEvents(sortedEvents);
-                        setLastUpdated(new Date());
+                        setLastUpdated(new Date()); // Only update when data is successfully received
                     } else {
                         setEvents([]);
                     }
                 } catch (err) {
-                    // Only set error if this is still the current request
                     if (currentRequestRef.current === requestId) {
                         console.error('Fetch error:', err);
                         setError(err.message);
                     }
                 } finally {
-                    // Only clear loading if this is still the current request
                     if (currentRequestRef.current === requestId) {
                         setLoading(false);
                     }
                 }
-            }, [config.webAppUrl, config.daysAhead]);
-            
-            // Debounced fetch - waits for user to stop typing
+            }, [config.webAppUrl, config.daysAhead, config.version, config.testMode, config.testDate]);
+
+            // Debounced fetch
             const debouncedFetch = useCallback((searchName) => {
-                // Clear any existing timer
                 if (debounceTimerRef.current) {
                     clearTimeout(debounceTimerRef.current);
                 }
-                
-                // Set a new timer - wait 500ms after last keystroke
                 debounceTimerRef.current = setTimeout(() => {
                     fetchSchedule(searchName);
                 }, 500);
             }, [fetchSchedule]);
-            
-            // Handle name change from settings
+
+            // Handle name change
             const handleNameChange = (newName) => {
                 inputNameRef.current = newName;
                 const newConfig = { ...config, searchName: newName };
                 setConfig(newConfig);
-                // Don't save yet - wait for settings to close or explicit save
                 debouncedFetch(newName);
             };
-            
-            // Save settings and close
+
+            // Save settings
             const handleSaveSettings = () => {
                 const newConfig = { ...config, searchName: inputNameRef.current };
                 saveConfig(newConfig);
                 setShowSettings(false);
-                // Fetch immediately with final name
                 if (debounceTimerRef.current) {
                     clearTimeout(debounceTimerRef.current);
                 }
                 fetchSchedule(inputNameRef.current);
             };
-            
+
             // Initial fetch and auto-refresh
             useEffect(() => {
                 fetchSchedule(config.searchName);
-                
-                // Auto-refresh every 15 minutes
+
                 const interval = setInterval(() => {
                     fetchSchedule(config.searchName);
                 }, 15 * 60 * 1000);
-                
+
                 return () => {
                     clearInterval(interval);
                     if (debounceTimerRef.current) {
@@ -344,7 +479,7 @@
                     }
                 };
             }, []);
-            
+
             // Manual refresh
             const handleRefresh = () => {
                 if (debounceTimerRef.current) {
@@ -352,14 +487,14 @@
                 }
                 fetchSchedule(config.searchName);
             };
-            
+
             return (
                 <div className="max-w-md mx-auto">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-4">
                         <h1 className="text-xl font-semibold text-white">Squadron Schedule</h1>
                         <div className="flex gap-2">
-                            <button 
+                            <button
                                 onClick={handleRefresh}
                                 disabled={loading}
                                 className="p-2 rounded-lg glass-card hover:bg-white/10 transition-colors disabled:opacity-50"
@@ -373,7 +508,7 @@
                                     </svg>
                                 )}
                             </button>
-                            <button 
+                            <button
                                 onClick={() => setShowSettings(!showSettings)}
                                 className="p-2 rounded-lg glass-card hover:bg-white/10 transition-colors"
                                 title="Settings"
@@ -385,7 +520,7 @@
                             </button>
                         </div>
                     </div>
-                    
+
                     {/* Settings Panel */}
                     {showSettings && (
                         <div className="glass-card rounded-xl p-4 mb-4 fade-in">
@@ -400,8 +535,9 @@
                                         className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
                                         placeholder="Enter name to search"
                                     />
-                                    <p className="text-xs text-gray-500 mt-1">Results update as you type (with brief delay)</p>
+                                    <p className="text-xs text-gray-500 mt-1">Results update as you type</p>
                                 </div>
+
                                 <div>
                                     <label className="block text-sm text-gray-400 mb-1">Days Ahead</label>
                                     <select
@@ -412,12 +548,44 @@
                                         }}
                                         className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
                                     >
-                                        <option value="4">Today + 3 days</option>
-                                        <option value="5">Today + 4 days</option>
-                                        <option value="6">Today + 5 days</option>
-                                        <option value="8">Today + 7 days</option>
+                                        <option value="1">1 day</option>
+                                        <option value="4">4 days</option>
+                                        <option value="5">5 days</option>
+                                        <option value="7">7 days</option>
                                     </select>
                                 </div>
+
+                                <div>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.testMode}
+                                            onChange={(e) => {
+                                                const newConfig = { ...config, testMode: e.target.checked };
+                                                setConfig(newConfig);
+                                            }}
+                                            className="w-4 h-4 rounded"
+                                        />
+                                        <span className="text-sm text-gray-400">Test Mode (simulate different date)</span>
+                                    </label>
+                                </div>
+
+                                {config.testMode && (
+                                    <div>
+                                        <label className="block text-sm text-gray-400 mb-1">Test Date</label>
+                                        <input
+                                            type="date"
+                                            value={config.testDate}
+                                            onChange={(e) => {
+                                                const newConfig = { ...config, testDate: e.target.value };
+                                                setConfig(newConfig);
+                                            }}
+                                            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">Simulates this date as "today"</p>
+                                    </div>
+                                )}
+
                                 <button
                                     onClick={handleSaveSettings}
                                     className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 transition-colors"
@@ -427,15 +595,18 @@
                             </div>
                         </div>
                     )}
-                    
+
                     {/* Status Bar */}
                     <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                        <span>Showing events for: <span className="text-blue-400">{config.searchName}</span></span>
+                        <span>
+                            Showing: <span className="text-blue-400">{config.searchName}</span>
+                            {config.testMode && <span className="ml-2 text-orange-400">(Test: {config.testDate})</span>}
+                        </span>
                         {lastUpdated && (
                             <span>Updated: {lastUpdated.toLocaleTimeString()}</span>
                         )}
                     </div>
-                    
+
                     {/* Error Display */}
                     {error && (
                         <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4 mb-4 text-red-300">
@@ -443,7 +614,7 @@
                             <p className="text-sm opacity-75">{error}</p>
                         </div>
                     )}
-                    
+
                     {/* Loading State */}
                     {loading && events.length === 0 && (
                         <div className="glass-card rounded-xl p-8 text-center">
@@ -451,7 +622,7 @@
                             <p className="text-gray-400">Loading schedule...</p>
                         </div>
                     )}
-                    
+
                     {/* Events List */}
                     {!loading && events.length === 0 && !error && (
                         <div className="glass-card rounded-xl p-8 text-center">
@@ -459,7 +630,7 @@
                             <p className="text-sm text-gray-500 mt-2">Try adjusting your search name in settings</p>
                         </div>
                     )}
-                    
+
                     {events.length > 0 && (
                         <div className="space-y-4">
                             {events.map((day, dayIndex) => (
@@ -467,8 +638,8 @@
                                     {/* Day Header */}
                                     <div className="flex items-center gap-2 mb-2">
                                         <span className={`text-sm font-medium px-2 py-0.5 rounded ${
-                                            getRelativeDay(day.date) === 'Today' 
-                                                ? 'bg-green-500/20 text-green-400' 
+                                            getRelativeDay(day.date) === 'Today'
+                                                ? 'bg-green-500/20 text-green-400'
                                                 : getRelativeDay(day.date) === 'Tomorrow'
                                                     ? 'bg-blue-500/20 text-blue-400'
                                                     : 'bg-gray-500/20 text-gray-400'
@@ -482,49 +653,18 @@
                                             ({day.events.length} event{day.events.length !== 1 ? 's' : ''})
                                         </span>
                                     </div>
-                                    
+
                                     {/* Events for this day */}
                                     <div className="space-y-2">
-                                        {day.events.map((event, eventIndex) => {
-                                            const { parts, type, colorClass, badgeClass } = parseEventDescription(
-                                                event.description,
-                                                event.rangeSource
-                                            );
-                                            
-                                            return (
-                                                <div 
-                                                    key={`${day.date}-${eventIndex}`}
-                                                    className={`glass-card rounded-lg p-3 ${colorClass}`}
-                                                >
-                                                    <div className="flex items-start justify-between gap-2">
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                {event.time && (
-                                                                    <span className="text-white font-medium">{event.time}</span>
-                                                                )}
-                                                                <span className={`text-xs px-1.5 py-0.5 rounded ${badgeClass} text-white`}>
-                                                                    {type}
-                                                                </span>
-                                                            </div>
-                                                            <div className="text-sm text-gray-300">
-                                                                {parts.map((part, i) => (
-                                                                    <span key={i}>
-                                                                        {i > 0 && <span className="text-gray-600 mx-1">•</span>}
-                                                                        {part}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                        {day.events.map((event, eventIndex) => (
+                                            <EventCard key={`${day.date}-${eventIndex}`} event={event} dayDate={day.date} />
+                                        ))}
                                     </div>
                                 </div>
                             ))}
                         </div>
                     )}
-                    
+
                     {/* Footer */}
                     <div className="mt-6 text-center text-xs text-gray-600">
                         <p>Auto-refreshes every 15 minutes</p>
@@ -533,7 +673,7 @@
                 </div>
             );
         }
-        
+
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
