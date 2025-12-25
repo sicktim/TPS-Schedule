@@ -105,10 +105,9 @@
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
 /**
- * doGet(e) - Main entry point for HTTP GET requests
+ * doGet_Simplified(e) - Main entry point for SIMPLIFIED version
  *
- * This function is automatically called by Google when someone accesses
- * the deployed web app URL. It's like the "main()" function for web requests.
+ * Called by Main.gs router when version=simplified or ACTIVE_VERSION="SIMPLIFIED"
  *
  * @param {Object} e - Event object provided by Google containing request details
  * @param {Object} e.parameter - URL query parameters as key-value pairs
@@ -127,7 +126,7 @@
  *     "totalEvents": 5
  *   }
  */
-function doGet(e) {
+function doGet_Simplified(e) {
   try {
     // Extract URL parameters with fallback defaults
     // e.parameter.name comes from "?name=Sick" in the URL

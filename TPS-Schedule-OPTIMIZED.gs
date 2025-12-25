@@ -100,10 +100,9 @@
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
 /**
- * doGet(e) - Main entry point for HTTP GET requests
+ * doGet_Optimized(e) - Main entry point for OPTIMIZED version
  *
- * This function is automatically called by Google when someone accesses
- * the deployed web app URL. It's like the "main()" function for web requests.
+ * Called by Main.gs router when version=optimized or ACTIVE_VERSION="OPTIMIZED"
  *
  * @param {Object} e - Event object provided by Google containing request details
  * @param {Object} e.parameter - URL query parameters as key-value pairs
@@ -122,7 +121,7 @@
  *     "totalEvents": 5
  *   }
  */
-function doGet(e) {
+function doGet_Optimized(e) {
   try {
     // Extract URL parameters with fallback defaults
     // e.parameter.name comes from "?name=Sick" in the URL
