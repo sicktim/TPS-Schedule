@@ -281,12 +281,13 @@
                             {parsed.enhanced.section === 'Flying Events' && (
                                 <>
                                     <div className="text-white font-medium">{parsed.enhanced.model} - {parsed.enhanced.event}</div>
-                                    <div className="text-gray-400 text-xs">
-                                        Brief: {parsed.enhanced.briefStart} | ETD: {parsed.enhanced.etd} | ETA: {parsed.enhanced.eta} | Debrief: {parsed.enhanced.debriefEnd}
+                                    <div className="text-gray-400 text-xs leading-relaxed">
+                                        <div>Brief: {parsed.enhanced.briefStart} → ETD: {parsed.enhanced.etd} → ETA: {parsed.enhanced.eta}</div>
+                                        <div>Debrief End: {parsed.enhanced.debriefEnd}</div>
                                     </div>
                                     {parsed.enhanced.crew.length > 0 && (
-                                        <div className="text-gray-300">
-                                            Crew: {parsed.enhanced.crew.join(', ')}
+                                        <div className="text-gray-300 text-sm">
+                                            Crew: {parsed.enhanced.crew.join(' • ')}
                                         </div>
                                     )}
                                     {parsed.enhanced.notes && (
@@ -303,8 +304,8 @@
                                         {parsed.enhanced.start} - {parsed.enhanced.end}
                                     </div>
                                     {parsed.enhanced.people.length > 0 && (
-                                        <div className="text-gray-300">
-                                            {parsed.enhanced.people.join(', ')}
+                                        <div className="text-gray-300 text-sm">
+                                            {parsed.enhanced.people.join(' • ')}
                                         </div>
                                     )}
                                 </>
@@ -331,8 +332,8 @@
                                         {parsed.enhanced.start} - {parsed.enhanced.end}
                                     </div>
                                     {parsed.enhanced.people.length > 0 && (
-                                        <div className="text-gray-300">
-                                            {parsed.enhanced.people.join(', ')}
+                                        <div className="text-gray-300 text-sm">
+                                            {parsed.enhanced.people.join(' • ')}
                                         </div>
                                     )}
                                 </>
