@@ -10,13 +10,225 @@
  * - Recommendation: Use CacheService primary, Spreadsheet backup
  */
 
+// ========================
+// TIERED BATCH PROCESSORS
+// ========================
+
+/**
+ * TIER 1: Process RECENT days (0-2: today through day after tomorrow)
+ * Run this every 45 minutes for freshest data on imminent events
+ * Quota usage: ~56 min/day
+ */
+function batchProcessRecent() {
+  return batchProcessDayRange(0, 3, 'recent'); // Days 0, 1, 2
+}
+
+/**
+ * TIER 2: Process UPCOMING days (3-7: 3-7 days out)
+ * Run this every 3 hours for reasonable freshness on future events
+ * Quota usage: ~14 min/day
+ */
+function batchProcessUpcoming() {
+  return batchProcessDayRange(3, 8, 'upcoming'); // Days 3, 4, 5, 6, 7
+}
+
+/**
+ * Generic batch processor for a specific day range
+ * @param {number} startDay - Day offset to start (0 = today)
+ * @param {number} endDay - Day offset to end (exclusive)
+ * @param {string} tier - Tier name ('recent' or 'upcoming')
+ */
+function batchProcessDayRange(startDay, endDay, tier) {
+  const metrics = {
+    startTime: new Date(),
+    tier: tier,
+    dayRange: `${startDay}-${endDay-1}`,
+    totalDuration: 0,
+    sheetsProcessed: 0,
+    peopleProcessed: 0,
+    eventsFound: 0,
+    cacheSize: 0,
+    errors: [],
+    sheetMetrics: [],
+    personMetrics: []
+  };
+
+  try {
+    console.log(`\n=== Starting Batch Processing [${tier.toUpperCase()}] - Days ${startDay}-${endDay-1} ===`);
+
+    const cache = CacheService.getScriptCache();
+
+    // Get sheets for this day range only
+    const sheets = getRelevantSheets(startDay, endDay);
+    console.log(`Processing ${sheets.length} sheets...`);
+
+    if (sheets.length === 0) {
+      console.warn('No sheets found for this day range');
+      return metrics;
+    }
+
+    // Get all people (need to process all people for each tier)
+    const people = getAllPeople();
+    console.log(`Processing ${people.length} people...`);
+
+    if (people.length === 0) {
+      throw new Error('No people found');
+    }
+
+    // Process each sheet
+    const allSchedules = {}; // personName -> { events: [], days: [] }
+
+    sheets.forEach(sheetInfo => {
+      const sheetStart = new Date();
+
+      try {
+        console.log(`\nProcessing sheet: ${sheetInfo.sheetName}`);
+        const sheetResults = processSheet(sheetInfo, people);
+
+        // Merge results
+        Object.keys(sheetResults).forEach(personName => {
+          if (!allSchedules[personName]) {
+            allSchedules[personName] = { events: [], days: [] };
+          }
+          allSchedules[personName].events.push(...sheetResults[personName].events);
+          if (!allSchedules[personName].days.includes(sheetInfo.date)) {
+            allSchedules[personName].days.push(sheetInfo.date);
+          }
+        });
+
+        const sheetDuration = (new Date() - sheetStart) / 1000;
+        metrics.sheetMetrics.push({
+          sheet: sheetInfo.sheetName,
+          date: sheetInfo.date,
+          duration: sheetDuration,
+          eventsFound: Object.values(sheetResults).reduce((sum, p) => sum + p.events.length, 0)
+        });
+
+        metrics.sheetsProcessed++;
+        console.log(`✓ Sheet processed in ${sheetDuration.toFixed(2)}s`);
+
+      } catch (e) {
+        console.error(`✗ Error processing sheet ${sheetInfo.sheetName}: ${e}`);
+        metrics.errors.push({ sheet: sheetInfo.sheetName, error: e.toString() });
+      }
+    });
+
+    // Update caches with per-day freshness
+    console.log('\n=== Updating Caches ===');
+    const updateTimestamp = new Date().toISOString();
+
+    people.forEach(person => {
+      const personStart = new Date();
+
+      try {
+        // Get existing cache (if any) to merge with
+        const existingCacheJson = cache.get(`schedule_${person.name}`);
+        let existingData = existingCacheJson ? JSON.parse(existingCacheJson) : null;
+
+        const schedule = allSchedules[person.name] || { events: [], days: [] };
+
+        // Build result with per-day freshness tracking
+        const result = {
+          person: person.name,
+          class: person.class,
+          type: person.type,
+          events: schedule.events,
+          days: schedule.days.sort(),
+          lastUpdated: updateTimestamp,
+          version: '5.0-batch-tiered',
+          tier: tier,
+          dayRange: `days ${startDay}-${endDay-1}`,
+          freshnessTimestamp: updateTimestamp
+        };
+
+        // If merging with existing data from other tiers, combine events
+        if (existingData && existingData.events) {
+          // Remove events from this day range, keep others
+          const daysInThisRange = new Set(schedule.days);
+          const otherEvents = existingData.events.filter(e => {
+            const eventDateStr = e.date || `${e.day} ${e.date}`; // Approximate
+            return !schedule.days.some(d => eventDateStr.includes(d));
+          });
+
+          result.events = [...otherEvents, ...schedule.events];
+          result.days = [...new Set([...existingData.days || [], ...schedule.days])].sort();
+        }
+
+        const json = JSON.stringify(result);
+        const sizeBytes = Utilities.newBlob(json).getBytes().length;
+        const sizeKB = (sizeBytes / 1024).toFixed(2);
+
+        // Cache it
+        cache.put(`schedule_${person.name}`, json, 21600); // 6 hours
+
+        metrics.peopleProcessed++;
+        metrics.eventsFound += schedule.events.length;
+        metrics.cacheSize += sizeBytes;
+
+        const personDuration = (new Date() - personStart) / 1000;
+        metrics.personMetrics.push({
+          name: person.name,
+          events: schedule.events.length,
+          sizeKB: parseFloat(sizeKB),
+          duration: personDuration
+        });
+
+        if (sizeBytes > 100000) {
+          console.log(`⚠ Large cache for ${person.name}: ${sizeKB} KB`);
+        }
+
+      } catch (e) {
+        console.error(`✗ Error caching ${person.name}: ${e}`);
+        metrics.errors.push({ person: person.name, error: e.toString() });
+      }
+    });
+
+    const completionTime = new Date();
+    metrics.totalDuration = (completionTime - metrics.startTime) / 1000;
+
+    // Store tier-specific metadata
+    const metadata = {
+      lastRun: completionTime.toISOString(),
+      startTime: metrics.startTime.toISOString(),
+      tier: tier,
+      dayRange: metrics.dayRange,
+      duration: metrics.totalDuration,
+      sheetsProcessed: metrics.sheetsProcessed,
+      peopleProcessed: metrics.peopleProcessed,
+      eventsFound: metrics.eventsFound,
+      totalCacheSizeMB: (metrics.cacheSize / 1024 / 1024).toFixed(2),
+      errors: metrics.errors.length
+    };
+
+    cache.put(`batch_metadata_${tier}`, JSON.stringify(metadata), 21600);
+
+    // Log summary
+    console.log(`\n=== Batch Processing Complete [${tier.toUpperCase()}] ===`);
+    console.log(`Day Range: ${startDay}-${endDay-1}`);
+    console.log(`Total Duration: ${metrics.totalDuration.toFixed(2)}s`);
+    console.log(`Sheets Processed: ${metrics.sheetsProcessed}/${sheets.length}`);
+    console.log(`People Processed: ${metrics.peopleProcessed}/${people.length}`);
+    console.log(`Events Found: ${metrics.eventsFound}`);
+    console.log(`Errors: ${metrics.errors.length}`);
+
+    return metrics;
+
+  } catch (e) {
+    console.error(`FATAL ERROR in ${tier} batch processing:`, e);
+    metrics.errors.push({ fatal: true, error: e.toString() });
+    metrics.totalDuration = (new Date() - metrics.startTime) / 1000;
+    throw e;
+  }
+}
+
 // ====================
-// MAIN BATCH PROCESSOR
+// LEGACY BATCH PROCESSOR (ALL DAYS)
 // ====================
 
 /**
- * Main function to batch process all schedules
- * Call this from a time-based trigger (every 5 minutes)
+ * Legacy function to batch process all schedules (all 7 days at once)
+ * Use the tiered functions above for better quota management
+ * Call this from a time-based trigger (every 1-2 hours)
  */
 function batchProcessAllSchedules() {
   const metrics = {
@@ -209,83 +421,58 @@ function batchProcessAllSchedules() {
 // =============================
 
 /**
- * Get list of ALL date sheets available in the spreadsheet
- * Finds all sheets matching date patterns (e.g., "Mon 15 Dec", "Tuesday, 16 Dec")
+ * Get list of date sheets within a specific day range
+ * @param {number} startDayOffset - Days from today to start (0 = today)
+ * @param {number} endDayOffset - Days from today to end (inclusive)
+ * @param {Date} baseDate - Optional: Base date for testing (default: today)
+ * @returns {Array} Array of sheet objects within the range
  */
-function getRelevantSheets(startDate) {
+function getRelevantSheets(startDayOffset = 0, endDayOffset = 7, baseDate = null) {
   const sheets = [];
   const ss = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
-  const allSheets = ss.getSheets();
+  const today = baseDate || new Date();
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const dayNamesShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-  // Regex patterns to match date sheets
-  // Matches: "Mon 15 Dec", "Monday, 15 Dec", "Monday Dec 15", "Monday 15 Dec"
-  const dayPattern = `(${dayNamesShort.join('|')}|${dayNames.join('|')})`;
-  const monthPattern = `(${monthNames.join('|')})`;
-  const datePattern = new RegExp(`^${dayPattern},?\\s+\\d{1,2}\\s+${monthPattern}$|^${dayPattern}\\s+${monthPattern}\\s+\\d{1,2}$`, 'i');
+  // Process each day in the range
+  for (let dayOffset = startDayOffset; dayOffset < endDayOffset; dayOffset++) {
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + dayOffset);
 
-  // Scan all sheets and find date sheets
-  allSheets.forEach(sheet => {
-    const sheetName = sheet.getName();
+    const dayName = dayNames[targetDate.getDay()];
+    const dayNameShort = dayNamesShort[targetDate.getDay()];
+    const monthName = monthNames[targetDate.getMonth()];
+    const day = targetDate.getDate();
 
-    // Check if sheet name matches date pattern
-    if (datePattern.test(sheetName)) {
-      // Parse the date from sheet name
-      const parsedDate = parseDateFromSheetName(sheetName, dayNames, dayNamesShort, monthNames);
+    // Try multiple sheet name formats
+    const sheetName1 = `${dayNameShort} ${day} ${monthName}`;  // "Mon 15 Dec" (most common)
+    const sheetName2 = `${dayName}, ${day} ${monthName}`;      // "Monday, 15 Dec"
+    const sheetName3 = `${dayName} ${monthName} ${day}`;       // "Monday Dec 15"
+    const sheetName4 = `${dayName} ${day} ${monthName}`;       // "Monday 15 Dec"
 
-      if (parsedDate) {
-        sheets.push({
-          sheetName: sheetName,
-          date: parsedDate.toISOString().split('T')[0],
-          dayName: dayNames[parsedDate.getDay()],
-          sheet: sheet,
-          sortKey: parsedDate.getTime() // For sorting
-        });
-      }
+    let sheet = ss.getSheetByName(sheetName1) ||
+                ss.getSheetByName(sheetName2) ||
+                ss.getSheetByName(sheetName3) ||
+                ss.getSheetByName(sheetName4);
+
+    if (sheet) {
+      sheets.push({
+        sheetName: sheet.getName(),
+        date: targetDate.toISOString().split('T')[0],
+        dayName: dayName,
+        dayOffset: dayOffset,
+        sheet: sheet
+      });
+    } else {
+      console.warn(`Sheet not found for day +${dayOffset}: Tried "${sheetName1}", "${sheetName2}", "${sheetName3}", "${sheetName4}"`);
     }
-  });
+  }
 
-  // Sort by date (earliest first)
-  sheets.sort((a, b) => a.sortKey - b.sortKey);
-
-  console.log(`Found ${sheets.length} date sheets: ${sheets.map(s => s.sheetName).join(', ')}`);
+  console.log(`Found ${sheets.length} date sheets (days ${startDayOffset}-${endDayOffset-1}): ${sheets.map(s => s.sheetName).join(', ')}`);
 
   return sheets;
-}
-
-/**
- * Parse a date from sheet name like "Mon 15 Dec" or "Monday, 15 Dec"
- */
-function parseDateFromSheetName(sheetName, dayNames, dayNamesShort, monthNames) {
-  try {
-    // Extract day number and month name
-    const dayMatch = sheetName.match(/\d{1,2}/);
-    const monthMatch = sheetName.match(new RegExp(monthNames.join('|'), 'i'));
-
-    if (!dayMatch || !monthMatch) return null;
-
-    const day = parseInt(dayMatch[0]);
-    const monthIndex = monthNames.findIndex(m => m.toLowerCase() === monthMatch[0].toLowerCase());
-
-    if (monthIndex === -1 || day < 1 || day > 31) return null;
-
-    // Assume current year (or next year if month has passed)
-    const now = new Date();
-    let year = now.getFullYear();
-
-    // If the month is in the past, assume next year
-    if (monthIndex < now.getMonth()) {
-      year++;
-    }
-
-    return new Date(year, monthIndex, day);
-  } catch (e) {
-    console.warn(`Could not parse date from sheet name: ${sheetName}`);
-    return null;
-  }
 }
 
 /**
@@ -756,19 +943,54 @@ function getBatchMetadata() {
 }
 
 /**
- * Test batch processor with FIXED TEST DATES (Dec 15-19, 2025)
+ * Test TIERED batch processors with FIXED TEST DATES (Jan 5, 2026+)
+ * Tests the two-tier system with proper day ranges
+ */
+function testTieredBatchProcessing() {
+  console.log('=== Testing TIERED Batch Processing (Start: Jan 5, 2026) ===\n');
+
+  const testStartDate = new Date('2026-01-05'); // Sunday, Jan 5, 2026
+
+  // Override getRelevantSheets to use test dates
+  const originalGetRelevantSheets = this.getRelevantSheets;
+
+  this.getRelevantSheets = function(startDay, endDay) {
+    return originalGetRelevantSheets(startDay, endDay, testStartDate);
+  };
+
+  try {
+    // Test RECENT tier (days 0-2)
+    console.log('\n===  TESTING TIER 1: RECENT (Days 0-2) ===');
+    const recentMetrics = batchProcessRecent();
+
+    console.log('\n=== TESTING TIER 2: UPCOMING (Days 3-7) ===');
+    const upcomingMetrics = batchProcessUpcoming();
+
+    console.log('\n=== COMBINED RESULTS ===');
+    console.log(`Recent: ${recentMetrics.sheetsProcessed} sheets, ${recentMetrics.eventsFound} events, ${recentMetrics.totalDuration.toFixed(2)}s`);
+    console.log(`Upcoming: ${upcomingMetrics.sheetsProcessed} sheets, ${upcomingMetrics.eventsFound} events, ${upcomingMetrics.totalDuration.toFixed(2)}s`);
+    console.log(`Total Duration: ${(recentMetrics.totalDuration + upcomingMetrics.totalDuration).toFixed(2)}s`);
+
+  } finally {
+    // Restore original function
+    this.getRelevantSheets = originalGetRelevantSheets;
+  }
+}
+
+/**
+ * Test batch processor with FIXED TEST DATES (Jan 5, 2026+)
  * Use this during development/testing when today's sheets don't exist
  */
 function testBatchProcessorWithTestDates() {
-  console.log('=== Testing Batch Processor (Fixed Test Dates: Dec 15-19, 2025) ===\n');
+  console.log('=== Testing Batch Processor (Fixed Test Dates: Jan 5-11, 2026) ===\n');
+
+  const testStartDate = new Date('2026-01-05'); // Sunday, Jan 5, 2026
 
   // Override getRelevantSheets to use test dates
-  const originalGetRelevantSheets = getRelevantSheets;
+  const originalGetRelevantSheets = this.getRelevantSheets;
 
-  // Temporarily replace with test date version
-  getRelevantSheets = function() {
-    const testStartDate = new Date('2025-12-15'); // Monday, Dec 15, 2025
-    return originalGetRelevantSheets(testStartDate);
+  this.getRelevantSheets = function(startDay = 0, endDay = 7) {
+    return originalGetRelevantSheets(startDay, endDay, testStartDate);
   };
 
   try {
