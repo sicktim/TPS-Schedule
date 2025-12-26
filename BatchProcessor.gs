@@ -108,7 +108,7 @@ function batchProcessAllSchedules() {
         };
 
         const json = JSON.stringify(result);
-        const sizeBytes = new Blob([json]).size;
+        const sizeBytes = Utilities.newBlob(json).getBytes().length;
         const sizeKB = (sizeBytes / 1024).toFixed(2);
 
         // Cache it
@@ -603,7 +603,7 @@ function testCacheRetrievalSpeed() {
 
     if (cached) {
       const data = JSON.parse(cached);
-      const sizeKB = (new Blob([cached]).size / 1024).toFixed(2);
+      const sizeKB = (Utilities.newBlob(cached).getBytes().length / 1024).toFixed(2);
       console.log(`${name}: ${duration}ms, ${sizeKB} KB, ${data.events.length} events`);
     } else {
       console.log(`${name}: CACHE MISS`);
