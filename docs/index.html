@@ -229,6 +229,19 @@
             return 9999;
         };
 
+        // Parse ISO date string as local date (prevents timezone offset issues)
+        const parseLocalDate = (dateStr) => {
+            // dateStr is in format "2026-01-05"
+            const [year, month, day] = dateStr.split('-').map(Number);
+            return new Date(year, month - 1, day); // month is 0-indexed
+        };
+
+        // Get day name from ISO date string
+        const getDayName = (dateStr) => {
+            const date = parseLocalDate(dateStr);
+            return date.toLocaleDateString('en-US', { weekday: 'long' });
+        };
+
         // Group flat event array by day
         const groupEventsByDay = (events, days) => {
             if (!events || !Array.isArray(events)) return [];
@@ -240,7 +253,7 @@
                 if (!grouped[date]) {
                     grouped[date] = {
                         date: date,
-                        dayName: event.day || '',
+                        dayName: getDayName(date), // Calculate correct day name from date
                         events: []
                     };
                 }
@@ -249,7 +262,7 @@
 
             // Convert to array and sort by date
             const result = Object.values(grouped).sort((a, b) => {
-                return new Date(a.date) - new Date(b.date);
+                return parseLocalDate(a.date) - parseLocalDate(b.date);
             });
 
             return sortEventsByTime(result);
@@ -286,7 +299,7 @@
 
         // Format date for display
         const formatDate = (dateStr, dayName) => {
-            const date = new Date(dateStr + 'T00:00:00');
+            const date = parseLocalDate(dateStr);
             const month = date.toLocaleDateString('en-US', { month: 'short' });
             const day = date.getDate();
             return `${dayName} ${month} ${day}`;
