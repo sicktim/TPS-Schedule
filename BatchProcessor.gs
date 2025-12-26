@@ -2,16 +2,17 @@
  * TPS Schedule - Batch Processor
  *
  * Pre-processes all schedules and caches results for instant retrieval.
- * Uses tiered batch processing for optimal quota usage.
+ * Runs every 15 minutes during work hours, automatically skips overnight.
  *
  * TRIGGER CONFIGURATION:
- * - Recent tier (days 0-2): Every 15 minutes → 47.0 min/day quota
- * - Upcoming tier (days 3-7): Every 30 minutes → 25.9 min/day quota
- * - TOTAL: 72.9 min/day (81% of 90 min daily limit)
+ * - Single trigger: Every 15 minutes
+ * - Processes: All 7 days of schedules
+ * - Overnight skip: 8 PM - 5 AM Pacific (saves 36% quota)
+ * - Quota usage: ~54 min/day (60% of 90 min daily limit)
  *
  * DATA FRESHNESS:
- * - Days 0-2 (today + 2): Up to 15 minutes old
- * - Days 3-7 (rest of week): Up to 30 minutes old
+ * - All days: Up to 15 minutes old (during work hours)
+ * - Overnight: Up to ~9 hours old (until 5 AM)
  *
  * Cache Limits (Google Apps Script):
  * - CacheService: 1MB per entry, 10MB total, 6 hour max TTL
@@ -19,9 +20,9 @@
  * - Recommendation: Use CacheService primary, Spreadsheet backup
  */
 
-// ========================
-// TIERED BATCH PROCESSORS
-// ========================
+// ====================
+// BATCH PROCESSOR
+// ====================
 
 /**
  * Check if current time is in overnight hours (8 PM - 5 AM Pacific)
@@ -61,15 +62,6 @@ function batchProcessSchedule() {
   }
 
   return batchProcessAll(7); // Process 7 days worth of schedules
-}
-
-// Keep legacy functions for backwards compatibility with existing triggers
-function batchProcessRecent() {
-  return batchProcessSchedule();
-}
-
-function batchProcessUpcoming() {
-  return batchProcessSchedule();
 }
 
 /**

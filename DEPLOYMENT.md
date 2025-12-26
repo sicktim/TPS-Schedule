@@ -126,19 +126,39 @@ You should get JSON response with events.
 2. Click **Run** (▶️)
 3. Check **Execution log**:
    ```
-   ✅ Created trigger: batchProcessSchedule (every 15 minutes)
+   ╔════════════════════════════════════════════════════════╗
+   ║     TPS SCHEDULE - AUTOMATED TRIGGER SETUP             ║
+   ╚════════════════════════════════════════════════════════╝
+
+   Step 1: Cleaning up existing triggers...
+   ✓ Cleanup complete
+
+   Step 2: Creating batch processing trigger...
+     Function: batchProcessSchedule
+     Interval: Every 15 minutes
+   ✓ Created trigger
+
+   Quota usage: 60 runs × 0.9 min = 54 min/day
+   Quota percentage: 60% of 90 min daily limit
    ```
 
-4. Verify triggers:
+4. Verify trigger:
    - Click ⏰ (clock icon) in left sidebar
-   - You should see:
+   - Click **Triggers** tab
+   - You should see ONE trigger:
      - `batchProcessSchedule` - Time-driven, Every 15 minutes
+   - **Note:** If you see old `batchProcessRecent` or `batchProcessUpcoming` triggers, run `deleteAllBatchTriggers()` first
 
 5. **First batch run:** Select `batchProcessSchedule` and click Run
    - This populates the cache initially
    - Takes ~1 minute
+   - Automatically skips if overnight hours (8 PM - 5 AM Pacific)
    - Check log for:
      ```
+     === Starting Batch Processing (Smart Sheet Finding) ===
+     Found 7 available sheets
+     Processing 292 people...
+
      === Batch Processing Complete ===
      Duration: 0.89 minutes
      People processed: 292

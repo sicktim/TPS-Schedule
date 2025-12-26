@@ -1,12 +1,12 @@
 /**
  * TPS Schedule - Automated Trigger Setup
  *
- * Creates time-based triggers for the tiered batch processing system
+ * Creates a single time-based trigger for batch processing
  *
- * QUOTA USAGE (verified with real execution times):
- * - Recent (every 15 min): 96 runs/day × 0.49 min = 47.0 min/day
- * - Upcoming (every 30 min): 48 runs/day × 0.54 min = 25.9 min/day
- * - TOTAL: 72.9 min/day (81% of 90 min daily limit)
+ * QUOTA USAGE (with overnight skip 8 PM - 5 AM):
+ * - Trigger fires: 96 times/day (every 15 min)
+ * - Actually processes: ~60 times/day (work hours only)
+ * - Quota used: 60 runs × 0.9 min = 54 min/day (60% of 90 min limit)
  */
 
 // ======================
@@ -14,16 +14,9 @@
 // ======================
 
 const TRIGGER_CONFIG = {
-  recent: {
-    functionName: 'batchProcessRecent',
-    intervalMinutes: 15,  // Valid: 1, 5, 10, 15, 30
-    description: 'Process days 0-2 (today through day after tomorrow)'
-  },
-  upcoming: {
-    functionName: 'batchProcessUpcoming',
-    intervalMinutes: 30,  // Valid: 1, 5, 10, 15, 30
-    description: 'Process days 3-7 (upcoming week)'
-  }
+  functionName: 'batchProcessSchedule',
+  intervalMinutes: 15,  // Valid: 1, 5, 10, 15, 30
+  description: 'Process all 7 days of schedules (skips overnight hours 8 PM - 5 AM)'
 };
 
 // ===================
@@ -31,13 +24,14 @@ const TRIGGER_CONFIG = {
 // ===================
 
 /**
- * MAIN SETUP: Run this once to configure all triggers
+ * MAIN SETUP: Run this once to configure the batch processing trigger
  *
  * This will:
- * 1. Delete any existing triggers for these functions (cleanup)
- * 2. Create RECENT trigger (every 20 minutes)
- * 3. Create UPCOMING trigger (every 30 minutes)
- * 4. Verify triggers were created successfully
+ * 1. Delete any existing batch processing triggers (cleanup)
+ * 2. Create a single trigger to run every 15 minutes
+ * 3. Verify trigger was created successfully
+ *
+ * Note: The batch processor automatically skips overnight hours (8 PM - 5 AM Pacific)
  */
 function setupAllTriggers() {
   console.log('╔════════════════════════════════════════════════════════╗');
@@ -50,55 +44,39 @@ function setupAllTriggers() {
     deleteAllBatchTriggers();
     console.log('✓ Cleanup complete\n');
 
-    // Step 2: Create RECENT trigger (every 20 minutes)
-    console.log('Step 2: Creating RECENT trigger...');
-    console.log(`  Function: ${TRIGGER_CONFIG.recent.functionName}`);
-    console.log(`  Interval: Every ${TRIGGER_CONFIG.recent.intervalMinutes} minutes`);
-    console.log(`  Purpose: ${TRIGGER_CONFIG.recent.description}`);
+    // Step 2: Create batch processing trigger
+    console.log('Step 2: Creating batch processing trigger...');
+    console.log(`  Function: ${TRIGGER_CONFIG.functionName}`);
+    console.log(`  Interval: Every ${TRIGGER_CONFIG.intervalMinutes} minutes`);
+    console.log(`  Purpose: ${TRIGGER_CONFIG.description}`);
 
-    const recentTrigger = ScriptApp.newTrigger(TRIGGER_CONFIG.recent.functionName)
+    const trigger = ScriptApp.newTrigger(TRIGGER_CONFIG.functionName)
       .timeBased()
-      .everyMinutes(TRIGGER_CONFIG.recent.intervalMinutes)
+      .everyMinutes(TRIGGER_CONFIG.intervalMinutes)
       .create();
 
-    console.log(`✓ Created trigger ID: ${recentTrigger.getUniqueId()}\n`);
+    console.log(`✓ Created trigger ID: ${trigger.getUniqueId()}\n`);
 
-    // Step 3: Create UPCOMING trigger (every 30 minutes)
-    console.log('Step 3: Creating UPCOMING trigger...');
-    console.log(`  Function: ${TRIGGER_CONFIG.upcoming.functionName}`);
-    console.log(`  Interval: Every ${TRIGGER_CONFIG.upcoming.intervalMinutes} minutes`);
-    console.log(`  Purpose: ${TRIGGER_CONFIG.upcoming.description}`);
-
-    const upcomingTrigger = ScriptApp.newTrigger(TRIGGER_CONFIG.upcoming.functionName)
-      .timeBased()
-      .everyMinutes(TRIGGER_CONFIG.upcoming.intervalMinutes)
-      .create();
-
-    console.log(`✓ Created trigger ID: ${upcomingTrigger.getUniqueId()}\n`);
-
-    // Step 4: Verify and display summary
-    console.log('Step 4: Verification...');
+    // Step 3: Verify and display summary
+    console.log('Step 3: Verification...');
     const triggers = ScriptApp.getProjectTriggers();
     const batchTriggers = triggers.filter(t =>
-      t.getHandlerFunction() === TRIGGER_CONFIG.recent.functionName ||
-      t.getHandlerFunction() === TRIGGER_CONFIG.upcoming.functionName
+      t.getHandlerFunction() === TRIGGER_CONFIG.functionName
     );
 
-    console.log(`\n✓ Total triggers created: ${batchTriggers.length}\n`);
+    console.log(`\n✓ Trigger created successfully!\n`);
 
     // Display quota summary
     console.log('═════════════════════════════════════════════════════');
     console.log('                 QUOTA SUMMARY                       ');
     console.log('═════════════════════════════════════════════════════');
-    console.log(`Recent tier (every ${TRIGGER_CONFIG.recent.intervalMinutes} min):`);
-    console.log(`  - ${Math.floor(1440 / TRIGGER_CONFIG.recent.intervalMinutes)} runs/day × 0.49 min = ${(Math.floor(1440 / TRIGGER_CONFIG.recent.intervalMinutes) * 0.49).toFixed(1)} min/day`);
-    console.log(`\nUpcoming tier (every ${TRIGGER_CONFIG.upcoming.intervalMinutes} min):`);
-    console.log(`  - ${Math.floor(1440 / TRIGGER_CONFIG.upcoming.intervalMinutes)} runs/day × 0.54 min = ${(Math.floor(1440 / TRIGGER_CONFIG.upcoming.intervalMinutes) * 0.54).toFixed(1)} min/day`);
-
-    const totalQuota = (Math.floor(1440 / TRIGGER_CONFIG.recent.intervalMinutes) * 0.49) +
-                       (Math.floor(1440 / TRIGGER_CONFIG.upcoming.intervalMinutes) * 0.54);
-
-    console.log(`\nTOTAL: ${totalQuota.toFixed(1)} min/day (${(totalQuota/90*100).toFixed(1)}% of 90 min limit)`);
+    console.log(`Trigger interval: Every ${TRIGGER_CONFIG.intervalMinutes} minutes`);
+    console.log(`Trigger fires: ${Math.floor(1440 / TRIGGER_CONFIG.intervalMinutes)} times/day (24 hours)`);
+    console.log(`Actually processes: ~60 times/day (work hours 5 AM - 8 PM)`);
+    console.log(`Skipped overnight: ~36 times/day (8 PM - 5 AM)`);
+    console.log(`\nQuota usage: 60 runs × 0.9 min = 54 min/day`);
+    console.log(`Quota percentage: 60% of 90 min daily limit`);
+    console.log(`Quota saved by overnight skip: 32 min/day (36%)`);
     console.log('═════════════════════════════════════════════════════\n');
 
     console.log('╔════════════════════════════════════════════════════════╗');
@@ -107,15 +85,15 @@ function setupAllTriggers() {
 
     console.log('Next steps:');
     console.log('1. Monitor the Executions tab (clock icon → Executions)');
-    console.log('2. Wait 20-30 minutes for first batch runs to complete');
+    console.log('2. Wait 15 minutes for first batch run to complete');
     console.log('3. Test the API to verify cache is being populated');
     console.log('4. Check quota usage after 24 hours\n');
 
     return {
       success: true,
-      triggersCreated: batchTriggers.length,
-      recentTriggerId: recentTrigger.getUniqueId(),
-      upcomingTriggerId: upcomingTrigger.getUniqueId()
+      triggerId: trigger.getUniqueId(),
+      functionName: TRIGGER_CONFIG.functionName,
+      intervalMinutes: TRIGGER_CONFIG.intervalMinutes
     };
 
   } catch (e) {
@@ -136,8 +114,9 @@ function deleteAllBatchTriggers() {
   triggers.forEach(trigger => {
     const functionName = trigger.getHandlerFunction();
 
-    // Delete triggers for batch processing functions
-    if (functionName === 'batchProcessRecent' ||
+    // Delete triggers for batch processing functions (including legacy names)
+    if (functionName === 'batchProcessSchedule' ||
+        functionName === 'batchProcessRecent' ||
         functionName === 'batchProcessUpcoming' ||
         functionName === 'batchProcessAllSchedules') {
 
@@ -210,78 +189,63 @@ function deleteAllTriggers() {
 function testTriggerConfiguration() {
   console.log('=== TRIGGER CONFIGURATION TEST ===\n');
 
-  console.log('Recent Tier Configuration:');
-  console.log(`  Function: ${TRIGGER_CONFIG.recent.functionName}`);
-  console.log(`  Interval: ${TRIGGER_CONFIG.recent.intervalMinutes} minutes`);
-  console.log(`  Description: ${TRIGGER_CONFIG.recent.description}`);
-  console.log(`  Runs per day: ${Math.floor(1440 / TRIGGER_CONFIG.recent.intervalMinutes)}`);
-  console.log(`  Estimated quota: ${(Math.floor(1440 / TRIGGER_CONFIG.recent.intervalMinutes) * 0.49).toFixed(1)} min/day\n`);
+  console.log('Batch Processing Configuration:');
+  console.log(`  Function: ${TRIGGER_CONFIG.functionName}`);
+  console.log(`  Interval: ${TRIGGER_CONFIG.intervalMinutes} minutes`);
+  console.log(`  Description: ${TRIGGER_CONFIG.description}`);
+  console.log(`  Runs per day: ${Math.floor(1440 / TRIGGER_CONFIG.intervalMinutes)} (triggers fire)`);
+  console.log(`  Actual runs: ~60/day (work hours only, overnight skip)`);
+  console.log(`  Estimated quota: 54 min/day (60% of 90 min limit)\n`);
 
-  console.log('Upcoming Tier Configuration:');
-  console.log(`  Function: ${TRIGGER_CONFIG.upcoming.functionName}`);
-  console.log(`  Interval: ${TRIGGER_CONFIG.upcoming.intervalMinutes} minutes`);
-  console.log(`  Description: ${TRIGGER_CONFIG.upcoming.description}`);
-  console.log(`  Runs per day: ${Math.floor(1440 / TRIGGER_CONFIG.upcoming.intervalMinutes)}`);
-  console.log(`  Estimated quota: ${(Math.floor(1440 / TRIGGER_CONFIG.upcoming.intervalMinutes) * 0.54).toFixed(1)} min/day\n`);
+  console.log('✓ Within quota limits');
+  console.log('✓ Overnight hours automatically skipped (8 PM - 5 AM Pacific)');
 
-  const totalQuota = (Math.floor(1440 / TRIGGER_CONFIG.recent.intervalMinutes) * 0.49) +
-                     (Math.floor(1440 / TRIGGER_CONFIG.upcoming.intervalMinutes) * 0.54);
-
-  console.log(`Total Daily Quota: ${totalQuota.toFixed(1)} min (${(totalQuota/90*100).toFixed(1)}% of 90 min limit)`);
-  console.log(totalQuota <= 90 ? '✓ Within quota limits' : '❌ EXCEEDS quota limits');
-
-  // Verify functions exist
+  // Verify function exists
   console.log('\nFunction Verification:');
   try {
-    if (typeof this[TRIGGER_CONFIG.recent.functionName] === 'function') {
-      console.log(`✓ ${TRIGGER_CONFIG.recent.functionName} exists`);
+    if (typeof this[TRIGGER_CONFIG.functionName] === 'function') {
+      console.log(`✓ ${TRIGGER_CONFIG.functionName} exists`);
     } else {
-      console.log(`❌ ${TRIGGER_CONFIG.recent.functionName} NOT FOUND`);
-    }
-
-    if (typeof this[TRIGGER_CONFIG.upcoming.functionName] === 'function') {
-      console.log(`✓ ${TRIGGER_CONFIG.upcoming.functionName} exists`);
-    } else {
-      console.log(`❌ ${TRIGGER_CONFIG.upcoming.functionName} NOT FOUND`);
+      console.log(`❌ ${TRIGGER_CONFIG.functionName} NOT FOUND`);
     }
   } catch (e) {
     console.log('Note: Function verification may not work in test mode');
   }
 
   console.log('\n✓ Configuration test complete');
-  console.log('Run setupAllTriggers() to create the triggers');
+  console.log('Run setupAllTriggers() to create the trigger');
 }
 
 /**
- * Quick status check - shows current triggers and next run times
+ * Quick status check - shows current triggers and status
  */
 function checkTriggerStatus() {
   console.log('=== TRIGGER STATUS ===\n');
 
   const triggers = ScriptApp.getProjectTriggers();
   const batchTriggers = triggers.filter(t =>
-    t.getHandlerFunction() === TRIGGER_CONFIG.recent.functionName ||
-    t.getHandlerFunction() === TRIGGER_CONFIG.upcoming.functionName
+    t.getHandlerFunction() === TRIGGER_CONFIG.functionName
   );
 
   if (batchTriggers.length === 0) {
-    console.log('❌ No batch processing triggers found!');
-    console.log('Run setupAllTriggers() to create them.\n');
+    console.log('❌ No batch processing trigger found!');
+    console.log('Run setupAllTriggers() to create it.\n');
     return;
   }
 
-  console.log(`Found ${batchTriggers.length} batch processing triggers:\n`);
+  console.log(`Found ${batchTriggers.length} batch processing trigger(s):\n`);
 
   batchTriggers.forEach(trigger => {
     console.log(`Function: ${trigger.getHandlerFunction()}`);
     console.log(`  ID: ${trigger.getUniqueId()}`);
-    console.log(`  Type: Time-based`);
+    console.log(`  Type: Time-based (every ${TRIGGER_CONFIG.intervalMinutes} min)`);
     console.log('');
   });
 
-  console.log('✓ Triggers are active and running');
+  console.log('✓ Trigger is active and running');
+  console.log('✓ Automatically skips overnight hours (8 PM - 5 AM Pacific)');
   console.log('\nTo monitor executions:');
   console.log('1. Click the clock icon (⏰) in the left sidebar');
   console.log('2. Click "Executions" tab');
-  console.log('3. You should see runs appearing every 20-30 minutes\n');
+  console.log('3. You should see runs every 15 minutes (work hours)\n');
 }

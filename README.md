@@ -1,6 +1,6 @@
 # TPS Schedule - Smart Schedule Display System
 
-**Version:** 6.0 (Smart Sheet Finding)
+**Version:** 6.2 (Simplified Single Trigger)
 **Last Updated:** December 26, 2025
 **Status:** ✅ Production Ready
 
@@ -19,10 +19,10 @@ TPS Schedule is an intelligent squadron schedule display system that:
 ✅ **Smart Sheet Finding** - Automatically starts from next available sheet
 ✅ **Handles Gaps** - Works with weekends, holidays, irregular schedules
 ✅ **Instant Loads** - <100ms response time via cache
-✅ **Auto-Updates** - Batch process runs every 15 minutes (work hours only)
+✅ **Auto-Updates** - Single trigger runs every 15 minutes (work hours only)
 ✅ **Overnight Skip** - Automatically pauses 8 PM - 5 AM Pacific to save quota
 ✅ **Mobile Optimized** - Works great on phones/tablets
-✅ **Hidden Refresh** - Triple-tap header to force manual refresh
+✅ **Hidden Refresh** - Triple-tap header to re-fetch from cache (same as refresh button)
 ✅ **No Test Modes** - Always shows live, current data
 
 ---
@@ -134,13 +134,14 @@ Option B: **Apps Script HTML**
 ### Batch Processing Flow
 
 ```
-Every 15 minutes:
-  1. Find next available sheet
-  2. Get 7 days worth of available sheets
-  3. Extract people from sheets (292 people)
-  4. Process each sheet for each person
-  5. Cache results (6-hour TTL)
-  6. Update metadata
+Single trigger every 15 minutes (work hours only):
+  1. Check if overnight hours (8 PM - 5 AM) → Skip if yes
+  2. Find next available sheet
+  3. Get 7 days worth of available sheets
+  4. Extract people from sheets (292 people)
+  5. Process each sheet for each person
+  6. Cache results (6-hour TTL)
+  7. Update metadata
 ```
 
 ### API Request Flow
@@ -312,9 +313,15 @@ GET https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec?name=Sick&days=7
 
 ## 📝 Change Log
 
+### Version 6.2 (December 26, 2025)
+- 🔧 **Simplified trigger system** - Removed tiered processing, single trigger only
+- 🗑️ **Removed legacy functions** - Cleaned up `batchProcessRecent()` and `batchProcessUpcoming()`
+- 📚 **Updated documentation** - Clarified quota usage and trigger configuration
+- ✅ **Eliminated redundancy** - Fixed issue where both triggers ran same process
+
 ### Version 6.1 (December 26, 2025)
 - ✨ Added overnight hours optimization (8 PM - 5 AM Pacific skip)
-- ✨ Implemented hidden manual refresh (triple-tap header)
+- ✨ Implemented hidden manual refresh (triple-tap header, re-fetches from cache)
 - ⚡ Reduced quota usage by 36% with overnight skip
 - 🎨 Updated status bar to "Data Updated: MM/DD/YY H:MM AM/PM" format
 - 🎨 Added "Next update: 5:00 AM" indicator during overnight hours
