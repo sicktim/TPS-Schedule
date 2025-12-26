@@ -83,11 +83,12 @@
 
         // Default configuration
         const DEFAULT_CONFIG = {
-            searchName: 'Sick',
+            searchName: '',  // Empty - will prompt on first use
             daysAhead: 7,  // Show 7 days worth of schedule
             webAppUrl: 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec',
             version: 'enhanced',
-            configVersion: 3  // Increment to force migration (removed test mode)
+            configVersion: 3,  // Increment to force migration (removed test mode)
+            firstTimeSetupDone: false  // Track if first-time setup completed
         };
 
         // Correct API URL (with batch processing cache)
@@ -447,6 +448,8 @@
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
             const [showSettings, setShowSettings] = useState(false);
+            const [showFirstTimeSetup, setShowFirstTimeSetup] = useState(!config.firstTimeSetupDone && !config.searchName);
+            const [firstTimeName, setFirstTimeName] = useState('');
             const [lastUpdated, setLastUpdated] = useState(null);
             const [cacheMetadata, setCacheMetadata] = useState(null);
             const [expandedEvents, setExpandedEvents] = useState(new Set());
@@ -562,6 +565,22 @@
                 const newConfig = { ...config, searchName: newName };
                 setConfig(newConfig);
                 debouncedFetch(newName);
+            };
+
+            // Complete first-time setup
+            const handleFirstTimeSetup = () => {
+                if (!firstTimeName.trim()) return;
+
+                const newConfig = {
+                    ...config,
+                    searchName: firstTimeName.trim(),
+                    firstTimeSetupDone: true
+                };
+                setConfig(newConfig);
+                saveConfig(newConfig);
+                setShowFirstTimeSetup(false);
+                inputNameRef.current = firstTimeName.trim();
+                fetchSchedule(firstTimeName.trim());
             };
 
             // Save settings
@@ -732,35 +751,79 @@
                         </div>
                     )}
 
-                    {/* Status Bar */}
-                    <div className="space-y-2 text-xs text-gray-500 mb-3">
-                        <div className="flex items-center justify-between">
-                            <span>
-                                Showing: <span className="text-blue-400">{config.searchName}</span>
-                            </span>
-                            {lastUpdated && (
-                                <span>Loaded: {lastUpdated.toLocaleTimeString()}</span>
-                            )}
-                        </div>
-                        {cacheMetadata && (
-                            <div className="flex items-center justify-between glass-card rounded px-2 py-1">
-                                <span className="flex items-center gap-2">
-                                    <span className="text-green-400">⚡ Cached</span>
-                                    {cacheMetadata.tier && (
-                                        <span className={`px-1.5 py-0.5 rounded text-xs ${
-                                            cacheMetadata.tier === 'recent'
-                                                ? 'bg-green-500/20 text-green-400'
-                                                : 'bg-blue-500/20 text-blue-400'
-                                        }`}>
-                                            {cacheMetadata.tier}
-                                        </span>
-                                    )}
-                                </span>
-                                <span>
-                                    Updated: {cacheMetadata.cacheUpdated.toLocaleTimeString()}
-                                </span>
+                    {/* First-Time Setup Modal */}
+                    {showFirstTimeSetup && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0, 0, 0, 0.7)'}}>
+                            <div className="glass-card rounded-xl p-6 max-w-md w-full border border-white/20 shadow-2xl fade-in">
+                                <h2 className="text-2xl font-semibold mb-2 text-white">Welcome to Squadron Schedule</h2>
+                                <p className="text-gray-400 mb-6">Enter your name exactly as it appears on the Whiteboard to see your schedule.</p>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm text-gray-300 mb-2">Your Name</label>
+                                        <input
+                                            type="text"
+                                            value={firstTimeName}
+                                            onChange={(e) => setFirstTimeName(e.target.value)}
+                                            onKeyPress={(e) => e.key === 'Enter' && handleFirstTimeSetup()}
+                                            className="w-full bg-black/40 border border-white/20 rounded-lg px-4 py-3 text-white text-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50"
+                                            placeholder="e.g., Smith, J *"
+                                            autoFocus
+                                        />
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Include spaces, commas, and special characters exactly as shown
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        onClick={handleFirstTimeSetup}
+                                        disabled={!firstTimeName.trim()}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-lg py-3 transition-colors"
+                                    >
+                                        Get My Schedule
+                                    </button>
+                                </div>
+
+                                <p className="text-xs text-gray-500 mt-4 text-center">
+                                    You can change this later in settings
+                                </p>
                             </div>
-                        )}
+                        </div>
+                    )}
+
+                    {/* Status Bar */}
+                    <div className="space-y-2 text-xs mb-3">
+                        <div className="flex items-center justify-between text-gray-500">
+                            <span>
+                                Showing: <span className="text-blue-400">{config.searchName || 'No name set'}</span>
+                            </span>
+                        </div>
+                        {cacheMetadata && (() => {
+                            const cacheAge = Date.now() - new Date(cacheMetadata.cacheUpdated).getTime();
+                            const minutesOld = Math.floor(cacheAge / (1000 * 60));
+                            const isStale = minutesOld > 25; // 15 min trigger + 10 min buffer
+
+                            return (
+                                <div className={`flex items-center justify-between glass-card rounded px-2 py-1 ${
+                                    isStale ? 'border border-yellow-500/30' : ''
+                                }`}>
+                                    <span className="flex items-center gap-2">
+                                        <span className="text-green-400">⚡ Cached</span>
+                                    </span>
+                                    <span className={isStale ? 'text-yellow-400' : 'text-gray-400'}>
+                                        {cacheMetadata.cacheUpdated.toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric'
+                                        })} {cacheMetadata.cacheUpdated.toLocaleTimeString('en-US', {
+                                            hour: 'numeric',
+                                            minute: '2-digit',
+                                            hour12: true
+                                        })}
+                                        {isStale && <span className="ml-1">⚠️</span>}
+                                    </span>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* Error Display */}
@@ -833,11 +896,11 @@
 
                     {/* Footer */}
                     <div className="mt-6 text-center text-xs text-gray-600 space-y-1">
-                        <p>Auto-refreshes every 15 minutes</p>
-                        <p>Add to home screen for quick access</p>
+                        <p>Schedule is cached and refreshed every 15 minutes via background batch processing</p>
+                        <p className="text-gray-500">Pull down to refresh display</p>
                         {cacheMetadata && (
                             <p className="text-gray-500">
-                                Cache: {cacheMetadata.dayRange} • {cacheMetadata.totalEvents} total events
+                                {cacheMetadata.totalEvents} events cached
                             </p>
                         )}
                         <p className="text-gray-700">v5.0-tiered • Built: 2025-12-26 21:30</p>
