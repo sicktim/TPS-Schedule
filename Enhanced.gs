@@ -58,8 +58,10 @@ function doGet_Enhanced(e) {
     const searchName = e.parameter.name || SEARCH_CONFIG.searchTerm;
     const daysAhead = parseInt(e.parameter.days) || 3;
     const testDate = e.parameter.testDate || null;
+    const showAcademics = e.parameter.showAcademics === 'true';
+    const showGroupedEvents = e.parameter.showGroupedEvents === 'true';
 
-    const results = getEventsForWidget_Enhanced(searchName, daysAhead, testDate);
+    const results = getEventsForWidget_Enhanced(searchName, daysAhead, testDate, showAcademics, showGroupedEvents);
 
     return ContentService
       .createTextOutput(JSON.stringify(results))
@@ -91,12 +93,13 @@ function doGet_Enhanced(e) {
  * @param {string} testDate - Optional test date (YYYY-MM-DD)
  * @returns {Object} Enhanced response with detailed event metadata
  */
-function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null) {
+function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null, showAcademics = false, showGroupedEvents = false) {
   const upcomingDays = getNextNWeekdays(daysAhead, testDate);
   const spreadsheet = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
 
   const events = [];
   const searchedSheets = [];
+  let personType = null;  // Will store if person is Alpha/Bravo student, etc.
 
   console.log(`⚡ ENHANCED VERSION - Searching for: "${searchName}"`);
   console.log(`Days to search: ${upcomingDays.length}`);
@@ -574,4 +577,235 @@ function testEnhancedSections() {
   const nas = parseNAsEnhanced(sheet, "Kalampouk");
   console.log(`   Found ${nas.length} events`);
   nas.forEach(evt => console.log(`   - ${JSON.stringify(evt.enhanced)}`));
+}
+
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║                                                                            ║
+// ║                    ACADEMICS AND GROUPED EVENTS                            ║
+// ║                                                                            ║
+// ║  Academics: Show class times for Alpha/Bravo students                     ║
+// ║  Grouped Events: Show ALL and STAFF ONLY events for relevant people       ║
+// ║                                                                            ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+
+/**
+ * Get academic schedule for a student based on their type
+ * 
+ * @param {string} personType - Type of student ("Students (Alpha)", "Students (Bravo)", etc.)
+ * @param {string} date - ISO date string (YYYY-MM-DD)
+ * @returns {Array} Array of academic event objects
+ */
+function getAcademicsForStudent(personType, date) {
+  const academics = [];
+  
+  // Alpha students: 07:30-17:00
+  if (personType && personType.toLowerCase().includes('alpha')) {
+    academics.push({
+      date: date,
+      time: '0730-1700',
+      description: 'ACADEMICS | Alpha | 07:30-17:00',
+      enhanced: {
+        section: 'Academics',
+        type: 'Alpha',
+        start: '07:30',
+        end: '17:00',
+        status: 'Effective'
+      }
+    });
+  }
+  
+  // Bravo students: 07:00-07:30, 08:30-09:30, 15:00-17:00
+  if (personType && personType.toLowerCase().includes('bravo')) {
+    academics.push({
+      date: date,
+      time: '0700-0730',
+      description: 'ACADEMICS | Bravo | 07:00-07:30',
+      enhanced: {
+        section: 'Academics',
+        type: 'Bravo',
+        start: '07:00',
+        end: '07:30',
+        status: 'Effective'
+      }
+    });
+    academics.push({
+      date: date,
+      time: '0830-0930',
+      description: 'ACADEMICS | Bravo | 08:30-09:30',
+      enhanced: {
+        section: 'Academics',
+        type: 'Bravo',
+        start: '08:30',
+        end: '09:30',
+        status: 'Effective'
+      }
+    });
+    academics.push({
+      date: date,
+      time: '1500-1700',
+      description: 'ACADEMICS | Bravo | 15:00-17:00',
+      enhanced: {
+        section: 'Academics',
+        type: 'Bravo',
+        start: '15:00',
+        end: '17:00',
+        status: 'Effective'
+      }
+    });
+  }
+  
+  return academics;
+}
+
+/**
+ * Check if a person should see grouped events based on their type
+ * 
+ * EXTENSIBILITY GUIDE:
+ * To add new event categories, modify this function:
+ * 1. Add a new case for the event type (e.g., "INSTRUCTORS ONLY")
+ * 2. Add the person types that should see it
+ * 3. The rest happens automatically
+ * 
+ * @param {string} eventType - Type of grouped event ("ALL", "STAFF ONLY", etc.)
+ * @param {string} personType - Type of person ("Staff IP", "Students (Alpha)", etc.)
+ * @returns {boolean} True if person should see this event
+ */
+function shouldShowGroupedEvent(eventType, personType) {
+  if (!eventType || !personType) return false;
+  
+  const eventTypeUpper = eventType.toUpperCase();
+  const personTypeLower = personType.toLowerCase();
+  
+  // ALL events: show to everyone
+  if (eventTypeUpper === 'ALL') {
+    return true;
+  }
+  
+  // STAFF ONLY events: show to staff categories
+  if (eventTypeUpper === 'STAFF ONLY' || eventTypeUpper === 'STAFF_ONLY') {
+    return (
+      personTypeLower.includes('staff ip') ||
+      personTypeLower.includes('staff ifte/icso') ||
+      personTypeLower.includes('stc staff') ||
+      personTypeLower.includes('attached/support')
+    );
+  }
+  
+  // EXTENSIBILITY EXAMPLE:
+  // Add new categories here following this pattern:
+  //
+  // if (eventTypeUpper === 'INSTRUCTORS ONLY') {
+  //   return (
+  //     personTypeLower.includes('staff ip') ||
+  //     personTypeLower.includes('staff ifte/icso')
+  //   );
+  // }
+  //
+  // if (eventTypeUpper === 'STUDENTS ONLY') {
+  //   return (
+  //     personTypeLower.includes('students (alpha)') ||
+  //     personTypeLower.includes('students (bravo)')
+  //   );
+  // }
+  
+  return false;
+}
+
+/**
+ * Find and process grouped events (ALL, STAFF ONLY, etc.) from a sheet
+ * 
+ * @param {Sheet} sheet - The schedule sheet
+ * @param {string} personType - Type of person viewing the schedule
+ * @param {string} date - ISO date string (YYYY-MM-DD)
+ * @returns {Array} Array of grouped event objects
+ */
+function getGroupedEventsForPerson(sheet, personType, date) {
+  const groupedEvents = [];
+  
+  // Search common areas where grouped events might appear
+  // You can adjust these ranges based on where "ALL" and "STAFF ONLY" appear in your sheets
+  
+  // Example: Check supervision area (rows 1-9)
+  const supervisionRange = sheet.getRange('A1:Z9');
+  const supervisionValues = supervisionRange.getValues();
+  
+  // Example: Check flying events area (rows 11-52)  
+  const flyingRange = sheet.getRange('A11:Z52');
+  const flyingValues = flyingRange.getValues();
+  
+  // Example: Check ground events area (rows 54-80)
+  const groundRange = sheet.getRange('A54:Z80');
+  const groundValues = groundRange.getValues();
+  
+  // Combine all areas to search
+  const allAreas = [
+    { values: supervisionValues, startRow: 1, type: 'Supervision' },
+    { values: flyingValues, startRow: 11, type: 'Flying Events' },
+    { values: groundValues, startRow: 54, type: 'Ground Events' }
+  ];
+  
+  // Search each area for grouped events
+  allAreas.forEach(area => {
+    area.values.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        if (cell && typeof cell === 'string') {
+          const cellUpper = cell.toUpperCase();
+          
+          // Check if this cell contains a grouped event indicator
+          if (cellUpper === 'ALL' || cellUpper === 'STAFF ONLY' || cellUpper === 'STAFF_ONLY') {
+            // Check if this person should see this event
+            if (shouldShowGroupedEvent(cell, personType)) {
+              // Try to extract event details from surrounding cells
+              const actualRow = area.startRow + rowIndex;
+              const eventData = extractGroupedEventDetails(sheet, actualRow, colIndex, area.type);
+              
+              if (eventData) {
+                groupedEvents.push({
+                  date: date,
+                  time: eventData.time || 'TBD',
+                  description: `${eventData.description} | ${cell}`,
+                  enhanced: {
+                    section: area.type,
+                    groupType: cell,
+                    ...eventData
+                  }
+                });
+              }
+            }
+          }
+        }
+      });
+    });
+  });
+  
+  return groupedEvents;
+}
+
+/**
+ * Helper function to extract event details when a grouped event is found
+ * 
+ * @param {Sheet} sheet - The schedule sheet
+ * @param {number} row - Row number (1-indexed)
+ * @param {number} col - Column number (0-indexed)
+ * @param {string} sectionType - Type of section this is in
+ * @returns {Object} Event details object
+ */
+function extractGroupedEventDetails(sheet, row, col, sectionType) {
+  try {
+    // This is a simplified extraction - adjust based on your actual sheet layout
+    // Look at surrounding cells to find time and description
+    
+    const timeCell = sheet.getRange(row, col + 1).getValue();  // Check next column for time
+    const descCell = sheet.getRange(row, col - 1).getValue();  // Check previous column for description
+    
+    return {
+      time: timeCell || 'TBD',
+      description: descCell || 'Event',
+      status: 'Effective'
+    };
+  } catch (e) {
+    console.warn(`Could not extract grouped event details: ${e}`);
+    return null;
+  }
 }

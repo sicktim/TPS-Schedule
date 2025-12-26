@@ -86,8 +86,10 @@
             searchName: '',  // Empty - will prompt on first use
             webAppUrl: 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec',
             version: 'enhanced',
-            configVersion: 3,  // Increment to force migration (removed test mode)
-            firstTimeSetupDone: false  // Track if first-time setup completed
+            configVersion: 4,  // Increment to force migration (added academics + grouped events)
+            firstTimeSetupDone: false,  // Track if first-time setup completed
+            showAcademics: false,  // Show academic schedule for students (Alpha/Bravo/STC)
+            showGroupedEvents: false  // Show ALL and STAFF ONLY events
         };
 
         // Correct API URL (with batch processing cache)
@@ -113,6 +115,14 @@
                         delete parsed.testMode;
                         delete parsed.testDate;
                         parsed.configVersion = 3;
+                    }
+
+                    // Auto-migrate: Add academics and grouped events (config version 4)
+                    if (parsed.configVersion < 4) {
+                        console.log('🔄 Adding academics and grouped events settings...');
+                        parsed.showAcademics = false;
+                        parsed.showGroupedEvents = false;
+                        parsed.configVersion = 4;
                     }
 
                     // Always ensure webAppUrl matches correct deployment
@@ -482,6 +492,14 @@
                         url += `&version=${config.version}`;
                     }
 
+                    // Add feature toggles
+                    if (config.showAcademics) {
+                        url += `&showAcademics=true`;
+                    }
+                    if (config.showGroupedEvents) {
+                        url += `&showGroupedEvents=true`;
+                    }
+
                     // Add cache-busting timestamp
                     url += `&_t=${requestId}`;
 
@@ -736,6 +754,50 @@
                                         placeholder="Enter name to search"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">Results update as you type</p>
+                                </div>
+
+                                {/* Show Academics Toggle */}
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <label className="block text-sm text-gray-300">Show Academics</label>
+                                        <p className="text-xs text-gray-500 mt-1">Display class times for Alpha/Bravo students</p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.showAcademics}
+                                            onChange={(e) => {
+                                                const newConfig = { ...config, showAcademics: e.target.checked };
+                                                setConfig(newConfig);
+                                                saveConfig(newConfig);
+                                                fetchSchedule(config.searchName);
+                                            }}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                    </label>
+                                </div>
+
+                                {/* Show Grouped Events Toggle */}
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <label className="block text-sm text-gray-300">Show Grouped Events</label>
+                                        <p className="text-xs text-gray-500 mt-1">Display ALL and STAFF ONLY events</p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.showGroupedEvents}
+                                            onChange={(e) => {
+                                                const newConfig = { ...config, showGroupedEvents: e.target.checked };
+                                                setConfig(newConfig);
+                                                saveConfig(newConfig);
+                                                fetchSchedule(config.searchName);
+                                            }}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                    </label>
                                 </div>
 
                                 <button
