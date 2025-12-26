@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Squadron Schedule</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1a1a2e">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+        * {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+            min-height: 100vh;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .event-flying { border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.1); }
+        .event-ground { border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.1); }
+        .event-na { border-left: 3px solid #ef4444; background: rgba(239, 68, 68, 0.1); }
+        .event-supervision { border-left: 3px solid #8b5cf6; background: rgba(139, 92, 246, 0.1); }
+        .event-other { border-left: 3px solid #3b82f6; background: rgba(59, 130, 246, 0.1); }
+
+        .badge-flying { background: #10b981; }
+        .badge-ground { background: #f59e0b; }
+        .badge-na { background: #ef4444; }
+        .badge-supervision { background: #8b5cf6; }
+        .badge-other { background: #3b82f6; }
+
+        .spinner {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    </style>
+</head>
+<body class="text-gray-100 p-4">
+    <div id="root"></div>
+
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Get the current script URL (will be the Apps Script web app URL)
+        const API_URL = window.location.origin + window.location.pathname;
+
+        function App() {
+            const [searchName, setSearchName] = useState('Sick');
+            const [data, setData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+
+            const fetchSchedule = async (name) => {
+                setLoading(true);
+                setError(null);
+
+                try {
+                    const response = await fetch(`${API_URL}?name=${encodeURIComponent(name)}&version=enhanced`);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const json = await response.json();
+                    setData(json);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                fetchSchedule(searchName);
+            }, [searchName]);
+
+            return (
+                <div className="max-w-md mx-auto">
+                    <div className="glass-card rounded-xl p-4 mb-4">
+                        <h1 className="text-xl font-bold mb-3">Squadron Schedule</h1>
+                        <input
+                            type="text"
+                            value={searchName}
+                            onChange={(e) => setSearchName(e.target.value)}
+                            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white"
+                            placeholder="Search name"
+                        />
+                    </div>
+
+                    {data?.cacheUpdated && (
+                        <div className="glass-card rounded px-3 py-2 mb-3 text-xs text-gray-400">
+                            <span className="text-green-400">⚡ Cached</span>
+                            {' • '}
+                            <span className={data.tier === 'recent' ? 'text-green-400' : 'text-blue-400'}>
+                                {data.tier}
+                            </span>
+                            {' • '}
+                            Updated: {new Date(data.cacheUpdated).toLocaleTimeString()}
+                        </div>
+                    )}
+
+                    {loading && <div className="text-center py-8"><div className="spinner mx-auto"></div></div>}
+                    {error && <div className="glass-card rounded-xl p-4 mb-4 text-red-400">Error: {error}</div>}
+
+                    {data?.events && (
+                        <div className="space-y-2">
+                            {data.events.map((event, i) => (
+                                <div key={i} className="glass-card rounded-lg p-3 event-flying">
+                                    <div className="text-white font-medium">{event.enhanced?.event || event.description}</div>
+                                    <div className="text-sm text-gray-400">{event.date} • {event.time}</div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
