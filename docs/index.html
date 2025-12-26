@@ -565,7 +565,7 @@
                         setLoading(false);
                     }
                 }
-            }, [config.webAppUrl, config.version]);
+            }, [config.webAppUrl, config.version, config.showAcademics, config.showGroupedEvents]);
 
             // Debounced fetch
             const debouncedFetch = useCallback((searchName) => {
@@ -691,6 +691,13 @@
                 };
             }, []);
 
+            // Re-fetch when academics or grouped events settings change
+            useEffect(() => {
+                if (config.searchName) {
+                    fetchSchedule(config.searchName);
+                }
+            }, [config.showAcademics, config.showGroupedEvents]);
+
             // Manual refresh
             const handleRefresh = () => {
                 if (debounceTimerRef.current) {
@@ -770,7 +777,6 @@
                                                 const newConfig = { ...config, showAcademics: e.target.checked };
                                                 setConfig(newConfig);
                                                 saveConfig(newConfig);
-                                                fetchSchedule(config.searchName);
                                             }}
                                             className="sr-only peer"
                                         />
@@ -792,7 +798,6 @@
                                                 const newConfig = { ...config, showGroupedEvents: e.target.checked };
                                                 setConfig(newConfig);
                                                 saveConfig(newConfig);
-                                                fetchSchedule(config.searchName);
                                             }}
                                             className="sr-only peer"
                                         />
