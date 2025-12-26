@@ -175,6 +175,15 @@
                     type = 'Supervision';
                     colorClass = 'event-supervision';
                     badgeClass = 'badge-supervision';
+                } else if (section === 'Academics') {
+                    type = 'Academics';
+                    colorClass = 'event-ground';  // Use ground styling (green)
+                    badgeClass = 'badge-ground';
+                } else if (enh.groupType) {
+                    // Grouped events (ALL, STAFF ONLY, etc.)
+                    type = enh.groupType;
+                    colorClass = 'event-supervision';  // Use supervision styling (purple)
+                    badgeClass = 'badge-supervision';
                 } else {
                     type = 'Other';
                     colorClass = 'event-other';
@@ -333,8 +342,14 @@
                         return parsed.enhanced.duty;
                     case 'NA':
                         return parsed.enhanced.reason;
+                    case 'Academics':
+                        return `${parsed.enhanced.type} Class`;  // "Alpha Class" or "Bravo Class"
                     default:
-                        return '';
+                        // Grouped events or other types
+                        if (parsed.enhanced.groupType) {
+                            return parsed.enhanced.description || 'Group Event';
+                        }
+                        return parsed.parts ? parsed.parts[0] : '';
                 }
             };
 
@@ -430,6 +445,40 @@
                                     {parsed.enhanced.people.length > 0 && (
                                         <div className="text-gray-300 text-sm">
                                             {parsed.enhanced.people.join(' • ')}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Academics */}
+                            {parsed.enhanced.section === 'Academics' && (
+                                <>
+                                    <div className="text-gray-300">
+                                        {parsed.enhanced.type} Student Schedule
+                                    </div>
+                                    <div className="text-gray-400 text-xs">
+                                        {parsed.enhanced.start} - {parsed.enhanced.end}
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Grouped Events (ALL, STAFF ONLY, etc.) */}
+                            {parsed.enhanced.groupType && (
+                                <>
+                                    <div className="text-gray-300">
+                                        {parsed.enhanced.groupType} Event
+                                    </div>
+                                    <div className="text-gray-400 text-xs">
+                                        Section: {parsed.enhanced.section}
+                                    </div>
+                                    {parsed.enhanced.description && (
+                                        <div className="text-gray-300 text-sm">
+                                            {parsed.enhanced.description}
+                                        </div>
+                                    )}
+                                    {parsed.enhanced.time && (
+                                        <div className="text-gray-400 text-xs">
+                                            {parsed.enhanced.time}
                                         </div>
                                     )}
                                 </>
