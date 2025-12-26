@@ -93,8 +93,20 @@ function doGet(e) {
 
     if (cached) {
       console.log(`⚡ CACHE HIT for ${searchName} - instant return (<100ms)`);
+
+      // Add batch metadata to response (when cache was last updated)
+      const batchMetadata = cache.get('batch_metadata');
+      let response = JSON.parse(cached);
+
+      if (batchMetadata) {
+        const metadata = JSON.parse(batchMetadata);
+        response.cacheUpdated = metadata.lastRun; // Timestamp when batch processing completed
+        response.batchDuration = metadata.duration;
+        response.totalEvents = metadata.eventsFound;
+      }
+
       return ContentService
-        .createTextOutput(cached)
+        .createTextOutput(JSON.stringify(response))
         .setMimeType(ContentService.MimeType.JSON);
     }
 

@@ -34,6 +34,21 @@ function batchProcessAllSchedules() {
   try {
     console.log('=== Starting Batch Processing ===');
 
+    // 0. Clear ALL existing caches to prevent stale data
+    // This ensures removed people don't stay cached indefinitely
+    const cache = CacheService.getScriptCache();
+
+    // Get list of previously cached people
+    const previousPeopleJson = cache.get('batch_people_list');
+    if (previousPeopleJson) {
+      const previousPeople = JSON.parse(previousPeopleJson);
+      console.log(`Removing ${previousPeople.length} previous cache entries...`);
+      previousPeople.forEach(name => {
+        cache.remove(`schedule_${name}`);
+      });
+      console.log('✓ Cleared all existing caches (prevents stale data)');
+    }
+
     // 1. Get all relevant sheets (today + next 4 days)
     const sheets = getRelevantSheets();
     console.log(`Processing ${sheets.length} sheets...`);
@@ -136,11 +151,13 @@ function batchProcessAllSchedules() {
       }
     });
 
-    metrics.totalDuration = (new Date() - metrics.startTime) / 1000;
+    const completionTime = new Date();
+    metrics.totalDuration = (completionTime - metrics.startTime) / 1000;
 
-    // 5. Store batch metadata
+    // 5. Store batch metadata and people list
     const metadata = {
-      lastRun: metrics.startTime.toISOString(),
+      lastRun: completionTime.toISOString(), // Use completion time, not start time
+      startTime: metrics.startTime.toISOString(),
       duration: metrics.totalDuration,
       sheetsProcessed: metrics.sheetsProcessed,
       peopleProcessed: metrics.peopleProcessed,
@@ -151,6 +168,10 @@ function batchProcessAllSchedules() {
     };
 
     cache.put('batch_metadata', JSON.stringify(metadata), 21600);
+
+    // Store list of cached people (for cleanup on next run)
+    const cachedPeopleNames = people.map(p => p.name);
+    cache.put('batch_people_list', JSON.stringify(cachedPeopleNames), 21600);
 
     // 6. Log summary
     console.log('\n=== Batch Processing Complete ===');
