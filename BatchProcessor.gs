@@ -235,37 +235,78 @@ function getRelevantSheets(startDate) {
 }
 
 /**
- * Extract all people from Student/Staff List (rows 120-169)
+ * Extract all people from all 5 columns across all sheets (rows 120-168)
+ *
+ * Reads from:
+ * - Students (Bravo): A120:A168
+ * - Students (Alpha): E120:E168
+ * - Staff IP: I120:I168
+ * - Staff IFTE/ICSO: M120:M168
+ * - Attached/Support: O120:O168
+ *
+ * Filters out: blanks, ".", headers like "Bravo Students", "STC Students", etc.
  */
 function getAllPeople() {
   const ss = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
 
-  // Try to find any sheet (use first one to get student list)
+  // Get all sheets to collect people from each
   const sheets = getRelevantSheets();
   if (sheets.length === 0) {
     throw new Error('No sheets found');
   }
 
-  const sheet = sheets[0].sheet;
-  const studentListData = sheet.getRange('A120:C169').getDisplayValues();
+  const peopleMap = new Map(); // Use Map to deduplicate
+  const headerPatterns = [
+    'bravo students', 'stc students', 'alpha students',
+    'staff ip', 'stc staff', 'attached', 'support'
+  ];
 
-  const people = [];
+  // Process each sheet to collect all unique people
+  sheets.forEach(sheetInfo => {
+    const sheet = sheetInfo.sheet;
 
-  studentListData.forEach((row, idx) => {
-    const name = row[0] ? row[0].trim() : '';
-    const className = row[1] ? row[1].trim() : 'Unknown';
-    const type = row[2] ? row[2].trim().toLowerCase() : 'student';
+    // Read all 5 columns at once (A, E, I, M, O from rows 120-168)
+    const data = sheet.getRange('A120:O168').getDisplayValues();
 
-    if (name && name !== '') {
-      people.push({
-        name: name,
-        class: className,
-        type: type
+    // Column definitions with their indices and types
+    const columns = [
+      { col: 0, name: 'Bravo Students', type: 'student' },      // A
+      { col: 4, name: 'Alpha Students', type: 'student' },      // E
+      { col: 8, name: 'Staff IP', type: 'staff' },              // I
+      { col: 12, name: 'Staff IFTE/ICSO', type: 'staff' },      // M
+      { col: 14, name: 'Attached/Support', type: 'staff' }      // O
+    ];
+
+    // Process each column
+    columns.forEach(colDef => {
+      data.forEach((row, idx) => {
+        const name = row[colDef.col] ? row[colDef.col].trim() : '';
+
+        // Skip if empty, just a dot, or a header
+        if (!name || name === '.' || name === '') {
+          return;
+        }
+
+        // Skip if it's a header row
+        const nameLower = name.toLowerCase();
+        if (headerPatterns.some(pattern => nameLower.includes(pattern))) {
+          return;
+        }
+
+        // Add to map (will deduplicate automatically)
+        if (!peopleMap.has(name)) {
+          peopleMap.set(name, {
+            name: name,
+            class: colDef.name,
+            type: colDef.type
+          });
+        }
       });
-    }
+    });
   });
 
-  console.log(`Found ${people.length} people in Student/Staff List`);
+  const people = Array.from(peopleMap.values());
+  console.log(`Found ${people.length} unique people across ${sheets.length} sheets`);
 
   return people;
 }
