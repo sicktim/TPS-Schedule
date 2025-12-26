@@ -202,8 +202,36 @@
             return 9999;
         };
 
+        // Group flat event array by day
+        const groupEventsByDay = (events, days) => {
+            if (!events || !Array.isArray(events)) return [];
+
+            // Group events by date
+            const grouped = {};
+            events.forEach(event => {
+                const date = event.date;
+                if (!grouped[date]) {
+                    grouped[date] = {
+                        date: date,
+                        dayName: event.day || '',
+                        events: []
+                    };
+                }
+                grouped[date].events.push(event);
+            });
+
+            // Convert to array and sort by date
+            const result = Object.values(grouped).sort((a, b) => {
+                return new Date(a.date) - new Date(b.date);
+            });
+
+            return sortEventsByTime(result);
+        };
+
         // Sort events by time
         const sortEventsByTime = (eventsData) => {
+            if (!eventsData || !Array.isArray(eventsData)) return [];
+
             return eventsData.map(day => ({
                 ...day,
                 events: [...day.events].sort((a, b) => {
@@ -440,10 +468,20 @@
                         return;
                     }
 
-                    if (data.events) {
-                        const sortedEvents = sortEventsByTime(data.events);
-                        setEvents(sortedEvents);
-                        setLastUpdated(new Date()); // Only update when data is successfully received
+                    if (data.events && Array.isArray(data.events)) {
+                        // Check if events are already grouped by day or flat
+                        let eventsData;
+
+                        if (data.events.length > 0 && data.events[0].events) {
+                            // Already grouped by day
+                            eventsData = sortEventsByTime(data.events);
+                        } else {
+                            // Flat array - need to group by day/date
+                            eventsData = groupEventsByDay(data.events, data.days);
+                        }
+
+                        setEvents(eventsData);
+                        setLastUpdated(new Date());
 
                         // Extract cache metadata
                         if (data.cacheUpdated) {
