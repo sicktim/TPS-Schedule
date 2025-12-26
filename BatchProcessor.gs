@@ -24,25 +24,209 @@
 // ========================
 
 /**
- * TIER 1: Process RECENT days (0-2: today through day after tomorrow)
+ * Main batch processor - processes all upcoming schedule days
  * Run this every 15 minutes via time-based trigger
- * Quota usage: 96 runs/day × 0.49 min = 47.0 min/day
+ *
+ * Uses smart sheet finding to automatically start from the next available sheet
+ * (handles gaps due to weekends, holidays, etc.)
  */
+function batchProcessSchedule() {
+  return batchProcessAll(7); // Process 7 days worth of schedules
+}
+
+// Keep legacy functions for backwards compatibility with existing triggers
 function batchProcessRecent() {
-  return batchProcessDayRange(0, 3, 'recent'); // Days 0, 1, 2
+  return batchProcessSchedule();
 }
 
-/**
- * TIER 2: Process UPCOMING days (3-7: 3-7 days out)
- * Run this every 30 minutes via time-based trigger
- * Quota usage: 48 runs/day × 0.54 min = 25.9 min/day
- */
 function batchProcessUpcoming() {
-  return batchProcessDayRange(3, 8, 'upcoming'); // Days 3, 4, 5, 6, 7
+  return batchProcessSchedule();
 }
 
 /**
- * Generic batch processor for a specific day range
+ * Process all upcoming schedule days using smart sheet finding
+ * @param {number} daysToProcess - Number of days to process
+ */
+function batchProcessAll(daysToProcess = 7) {
+  const metrics = {
+    startTime: new Date(),
+    tier: 'all',
+    dayRange: `smart-${daysToProcess}days`,
+    totalDuration: 0,
+    sheetsProcessed: 0,
+    peopleProcessed: 0,
+    eventsFound: 0,
+    cacheSize: 0,
+    errors: [],
+    sheetMetrics: [],
+    personMetrics: []
+  };
+
+  try {
+    console.log(`\n=== Starting Batch Processing (Smart Sheet Finding) ===`);
+    console.log(`Requested: ${daysToProcess} days worth of schedules`);
+
+    const cache = CacheService.getScriptCache();
+
+    // Use smart sheet finding to get available sheets
+    const sheets = getSmartSheetRange(daysToProcess);
+    console.log(`Found ${sheets.length} available sheets\n`);
+
+    if (sheets.length === 0) {
+      console.warn('No sheets found - cannot process');
+      return metrics;
+    }
+
+    // Get all people
+    const people = getAllPeople();
+    console.log(`Processing ${people.length} people...`);
+
+    if (people.length === 0) {
+      throw new Error('No people found');
+    }
+
+    // Clear old cached data first (prevents stale cache)
+    const previousPeopleJson = cache.get('batch_people_list');
+    if (previousPeopleJson) {
+      const previousPeople = JSON.parse(previousPeopleJson);
+      console.log(`Clearing ${previousPeople.length} old cache entries...`);
+      previousPeople.forEach(name => {
+        cache.remove(`schedule_${name}`);
+      });
+    }
+
+    // Process each sheet
+    const allSchedules = {}; // personName -> { events: [], days: [] }
+
+    sheets.forEach(sheetInfo => {
+      const sheetStart = new Date();
+
+      try {
+        console.log(`\nProcessing sheet: ${sheetInfo.sheetName} (${sheetInfo.date})`);
+        const sheetResults = processSheet(sheetInfo, people);
+
+        // Merge results
+        Object.keys(sheetResults).forEach(personName => {
+          if (!allSchedules[personName]) {
+            allSchedules[personName] = { events: [], days: [] };
+          }
+
+          allSchedules[personName].events.push(...sheetResults[personName].events);
+
+          if (!allSchedules[personName].days.includes(sheetInfo.date)) {
+            allSchedules[personName].days.push(sheetInfo.date);
+          }
+        });
+
+        const sheetDuration = (new Date() - sheetStart) / 1000;
+        metrics.sheetMetrics.push({
+          sheet: sheetInfo.sheetName,
+          date: sheetInfo.date,
+          duration: sheetDuration,
+          eventsFound: Object.values(sheetResults).reduce((sum, p) => sum + p.events.length, 0)
+        });
+
+        console.log(`  Completed in ${sheetDuration.toFixed(2)}s`);
+
+      } catch (error) {
+        const errorMsg = `Sheet ${sheetInfo.sheetName}: ${error.toString()}`;
+        console.error(`  ERROR: ${errorMsg}`);
+        metrics.errors.push(errorMsg);
+      }
+    });
+
+    metrics.sheetsProcessed = sheets.length;
+
+    // Cache results
+    console.log('\n=== Updating Caches ===');
+    const updateTimestamp = new Date().toISOString();
+    const cachedPeopleNames = [];
+
+    people.forEach(person => {
+      const schedule = allSchedules[person.name];
+
+      if (schedule && schedule.events.length > 0) {
+        const cacheData = {
+          person: person.name,
+          class: person.class || '',
+          type: person.type || '',
+          events: schedule.events,
+          days: schedule.days.sort(),
+          lastUpdated: updateTimestamp,
+          version: '5.0-smart',
+          tier: 'all',
+          dayRange: `${daysToProcess} days`
+        };
+
+        const json = JSON.stringify(cacheData);
+        const cacheKey = `schedule_${person.name}`;
+
+        cache.put(cacheKey, json, 21600); // 6 hours
+        cachedPeopleNames.push(person.name);
+
+        metrics.eventsFound += schedule.events.length;
+        metrics.cacheSize += Utilities.newBlob(json).getBytes().length;
+
+        metrics.personMetrics.push({
+          person: person.name,
+          eventsFound: schedule.events.length,
+          daysWithEvents: schedule.days.length,
+          cacheSize: json.length
+        });
+      }
+    });
+
+    metrics.peopleProcessed = people.length;
+
+    // Store people list for next cleanup
+    cache.put('batch_people_list', JSON.stringify(cachedPeopleNames), 21600);
+
+    // Store metadata
+    const completionTime = new Date();
+    metrics.totalDuration = (completionTime - metrics.startTime) / (1000 * 60); // minutes
+
+    const metadata = {
+      lastRun: completionTime.toISOString(),
+      startTime: metrics.startTime.toISOString(),
+      tier: 'all',
+      dayRange: `smart-${daysToProcess}days`,
+      duration: metrics.totalDuration,
+      sheetsProcessed: metrics.sheetsProcessed,
+      peopleProcessed: metrics.peopleProcessed,
+      eventsFound: metrics.eventsFound,
+      cacheSizeMB: (metrics.cacheSize / (1024 * 1024)).toFixed(2),
+      errors: metrics.errors.length
+    };
+
+    cache.put('batch_metadata', JSON.stringify(metadata), 21600);
+
+    // Log summary
+    console.log('\n=== Batch Processing Complete ===');
+    console.log(`Duration: ${metrics.totalDuration.toFixed(2)} minutes`);
+    console.log(`Sheets processed: ${metrics.sheetsProcessed}`);
+    console.log(`People processed: ${metrics.peopleProcessed}`);
+    console.log(`Events found: ${metrics.eventsFound}`);
+    console.log(`Cache size: ${metadata.cacheSizeMB} MB`);
+    console.log(`Errors: ${metrics.errors.length}`);
+
+    if (metrics.errors.length > 0) {
+      console.log('\nErrors:');
+      metrics.errors.forEach(err => console.log(`  • ${err}`));
+    }
+
+    return metrics;
+
+  } catch (error) {
+    console.error('❌ FATAL ERROR in batch processing:');
+    console.error(error.toString());
+    console.error(error.stack);
+    metrics.errors.push(`FATAL: ${error.toString()}`);
+    throw error;
+  }
+}
+
+/**
+ * Generic batch processor for a specific day range (LEGACY - kept for backwards compatibility)
  * @param {number} startDay - Day offset to start (0 = today)
  * @param {number} endDay - Day offset to end (exclusive)
  * @param {string} tier - Tier name ('recent' or 'upcoming')
@@ -63,13 +247,15 @@ function batchProcessDayRange(startDay, endDay, tier) {
   };
 
   try {
-    console.log(`\n=== Starting Batch Processing [${tier.toUpperCase()}] - Days ${startDay}-${endDay-1} ===`);
+    console.log(`\n=== Starting Batch Processing [${tier.toUpperCase()}] ===`);
 
     const cache = CacheService.getScriptCache();
 
-    // Get sheets for this day range only
-    const sheets = getRelevantSheets(startDay, endDay);
-    console.log(`Processing ${sheets.length} sheets...`);
+    // Use smart sheet finding to get available sheets
+    // This finds the next available sheet and gets N days from there
+    const daysToProcess = endDay - startDay;
+    const sheets = getSmartSheetRange(daysToProcess);
+    console.log(`Processing ${sheets.length} sheets (requested ${daysToProcess} days)...`);
 
     if (sheets.length === 0) {
       console.warn('No sheets found for this day range');
