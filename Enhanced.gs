@@ -825,7 +825,10 @@ function shouldShowGroupedEvent(eventType, personType) {
 
 /**
  * Find and process grouped events (ALL, STAFF ONLY, etc.) from a sheet
- * 
+ *
+ * Uses structure-aware parsing to correctly extract event details based on
+ * the known column layout of each section.
+ *
  * @param {Sheet} sheet - The schedule sheet
  * @param {string} personType - Type of person viewing the schedule
  * @param {string} date - ISO date string (YYYY-MM-DD)
@@ -833,90 +836,230 @@ function shouldShowGroupedEvent(eventType, personType) {
  */
 function getGroupedEventsForPerson(sheet, personType, date) {
   const groupedEvents = [];
-  
-  // Search common areas where grouped events might appear
-  // You can adjust these ranges based on where "ALL" and "STAFF ONLY" appear in your sheets
-  
-  // Example: Check supervision area (rows 1-9)
-  const supervisionRange = sheet.getRange('A1:Z9');
-  const supervisionValues = supervisionRange.getValues();
-  
-  // Example: Check flying events area (rows 11-52)  
-  const flyingRange = sheet.getRange('A11:Z52');
-  const flyingValues = flyingRange.getValues();
-  
-  // Example: Check ground events area (rows 54-80)
-  const groundRange = sheet.getRange('A54:Z80');
-  const groundValues = groundRange.getValues();
-  
-  // Combine all areas to search
-  const allAreas = [
-    { values: supervisionValues, startRow: 1, type: 'Supervision' },
-    { values: flyingValues, startRow: 11, type: 'Flying Events' },
-    { values: groundValues, startRow: 54, type: 'Ground Events' }
-  ];
-  
-  // Search each area for grouped events
-  allAreas.forEach(area => {
-    area.values.forEach((row, rowIndex) => {
-      row.forEach((cell, colIndex) => {
-        if (cell && typeof cell === 'string') {
-          const cellUpper = cell.toUpperCase();
-          
-          // Check if this cell contains a grouped event indicator
-          if (cellUpper === 'ALL' || cellUpper === 'STAFF ONLY' || cellUpper === 'STAFF_ONLY') {
-            // Check if this person should see this event
-            if (shouldShowGroupedEvent(cell, personType)) {
-              // Try to extract event details from surrounding cells
-              const actualRow = area.startRow + rowIndex;
-              const eventData = extractGroupedEventDetails(sheet, actualRow, colIndex, area.type);
-              
-              if (eventData) {
-                groupedEvents.push({
-                  date: date,
-                  time: eventData.time || 'TBD',
-                  description: `${eventData.description} | ${cell}`,
-                  enhanced: {
-                    section: area.type,
-                    groupType: cell,
-                    ...eventData
-                  }
-                });
-              }
-            }
-          }
-        }
-      });
-    });
-  });
-  
+
+  // Parse each section using structure-aware methods
+  groupedEvents.push(...parseGroundEventsForGroups(sheet, personType, date));
+  groupedEvents.push(...parseFlyingEventsForGroups(sheet, personType, date));
+  groupedEvents.push(...parseSupervisionForGroups(sheet, personType, date));
+
+  console.log(`Found ${groupedEvents.length} grouped events for ${personType}`);
   return groupedEvents;
 }
 
 /**
- * Helper function to extract event details when a grouped event is found
- * 
- * @param {Sheet} sheet - The schedule sheet
- * @param {number} row - Row number (1-indexed)
- * @param {number} col - Column number (0-indexed)
- * @param {string} sectionType - Type of section this is in
- * @returns {Object} Event details object
+ * Parse Ground Events section for grouped events (ALL, STAFF ONLY, etc.)
+ *
+ * Ground Events Structure (rows 54-80):
+ *   Column A: Event Name
+ *   Column B: Start Time
+ *   Column C: End Time
+ *   Column D+: People (this is where "ALL", "STAFF ONLY" appear)
+ *   Last 3 cols: Status checkboxes
  */
-function extractGroupedEventDetails(sheet, row, col, sectionType) {
-  try {
-    // This is a simplified extraction - adjust based on your actual sheet layout
-    // Look at surrounding cells to find time and description
-    
-    const timeCell = sheet.getRange(row, col + 1).getValue();  // Check next column for time
-    const descCell = sheet.getRange(row, col - 1).getValue();  // Check previous column for description
-    
-    return {
-      time: timeCell || 'TBD',
-      description: descCell || 'Event',
-      status: 'Effective'
-    };
-  } catch (e) {
-    console.warn(`Could not extract grouped event details: ${e}`);
-    return null;
-  }
+function parseGroundEventsForGroups(sheet, personType, date) {
+  const matches = [];
+  const values = sheet.getRange('A54:Q80').getDisplayValues();
+
+  values.forEach((row, rowIndex) => {
+    const event = row[0];  // A: Event name
+    const start = row[1];  // B: Start time
+    const end = row[2];    // C: End time
+
+    // Skip empty rows
+    if (!event && !start) return;
+
+    // People are in columns D onwards, stop before last 3 status columns
+    const peopleColumns = row.slice(3, -3);
+
+    // Check if any person column contains a group indicator
+    const hasGroupIndicator = peopleColumns.some(person => {
+      if (!person) return false;
+      const personUpper = person.toUpperCase();
+      return personUpper === 'ALL' || personUpper === 'STAFF ONLY' || personUpper === 'STAFF_ONLY';
+    });
+
+    if (!hasGroupIndicator) return;
+
+    // Find which group indicator(s) are present
+    peopleColumns.forEach(person => {
+      if (!person) return;
+      const personUpper = person.toUpperCase();
+
+      if (personUpper === 'ALL' || personUpper === 'STAFF ONLY' || personUpper === 'STAFF_ONLY') {
+        // Check if this person should see this grouped event
+        if (shouldShowGroupedEvent(person, personType)) {
+
+          // Status checkboxes in last 3 columns
+          const effective = parseBoolean(row[row.length - 3]);
+          const cancelled = parseBoolean(row[row.length - 2]);
+          const partiallyEffective = parseBoolean(row[row.length - 1]);
+
+          matches.push({
+            time: start,
+            description: `${event} | ${person}`,
+            enhanced: {
+              section: 'Ground Events',
+              event: event,
+              start: start,
+              end: end,
+              groupType: person,
+              status: {
+                effective: effective,
+                cancelled: cancelled,
+                partiallyEffective: partiallyEffective
+              }
+            }
+          });
+
+          console.log(`✓ Grouped Ground Event: ${event} for ${person}`);
+        }
+      }
+    });
+  });
+
+  return matches;
+}
+
+/**
+ * Parse Flying Events section for grouped events (ALL, STAFF ONLY, etc.)
+ *
+ * Flying Events Structure (rows 11-52):
+ *   Column A: Model
+ *   Column B: Brief Start
+ *   Column C: ETD
+ *   Column D: ETA
+ *   Column E: Debrief End
+ *   Column F: Event
+ *   Column G+: Crew (this is where "ALL", "STAFF ONLY" appear)
+ *   Last 3 cols: Status checkboxes
+ */
+function parseFlyingEventsForGroups(sheet, personType, date) {
+  const matches = [];
+  const values = sheet.getRange('A11:R52').getDisplayValues();
+
+  values.forEach((row, rowIndex) => {
+    const model = row[0];       // A: Model
+    const briefStart = row[1];  // B: Brief Start
+    const etd = row[2];         // C: ETD
+    const eta = row[3];         // D: ETA
+    const debriefEnd = row[4];  // E: Debrief End
+    const event = row[5];       // F: Event
+
+    // Skip empty rows
+    if (!model && !event) return;
+
+    // Crew columns: G onwards, stop before last 3 status columns
+    const crewColumns = row.slice(6, -3);
+
+    // Check if any crew column contains a group indicator
+    const hasGroupIndicator = crewColumns.some(crew => {
+      if (!crew) return false;
+      const crewUpper = crew.toUpperCase();
+      return crewUpper === 'ALL' || crewUpper === 'STAFF ONLY' || crewUpper === 'STAFF_ONLY';
+    });
+
+    if (!hasGroupIndicator) return;
+
+    // Find which group indicator(s) are present
+    crewColumns.forEach(crew => {
+      if (!crew) return;
+      const crewUpper = crew.toUpperCase();
+
+      if (crewUpper === 'ALL' || crewUpper === 'STAFF ONLY' || crewUpper === 'STAFF_ONLY') {
+        // Check if this person should see this grouped event
+        if (shouldShowGroupedEvent(crew, personType)) {
+
+          // Status checkboxes in last 3 columns
+          const effective = parseBoolean(row[row.length - 3]);
+          const cancelled = parseBoolean(row[row.length - 2]);
+          const partiallyEffective = parseBoolean(row[row.length - 1]);
+
+          matches.push({
+            time: briefStart,
+            description: `${model} | ${event} | ${crew}`,
+            enhanced: {
+              section: 'Flying Events',
+              model: model,
+              briefStart: briefStart,
+              etd: etd,
+              eta: eta,
+              debriefEnd: debriefEnd,
+              event: event,
+              groupType: crew,
+              status: {
+                effective: effective,
+                cancelled: cancelled,
+                partiallyEffective: partiallyEffective
+              }
+            }
+          });
+
+          console.log(`✓ Grouped Flying Event: ${model} ${event} for ${crew}`);
+        }
+      }
+    });
+  });
+
+  return matches;
+}
+
+/**
+ * Parse Supervision section for grouped events (ALL, STAFF ONLY, etc.)
+ *
+ * Supervision Structure (rows 1-9):
+ *   Column A: Duty Type (SOF, OS, ODO, etc.)
+ *   Columns B+: Time slots (POC, Start, End) repeating
+ */
+function parseSupervisionForGroups(sheet, personType, date) {
+  const matches = [];
+  const values = sheet.getRange('A1:N9').getDisplayValues();
+
+  values.forEach((row, rowIndex) => {
+    const dutyType = row[0]; // Column A: SOF, OS, ODO, etc.
+    if (!dutyType || dutyType === '' || dutyType === 'Supervision') return;
+
+    // Parse time slots (groups of 3 columns: POC, Start, End)
+    for (let col = 1; col < row.length - 2; col += 3) {
+      const poc = row[col];
+      const start = row[col + 1];
+      const end = row[col + 2];
+
+      // Skip empty slots
+      if (!poc && !start && !end) continue;
+
+      // Check if POC contains a group indicator
+      if (poc) {
+        const pocUpper = poc.toUpperCase();
+
+        if (pocUpper === 'ALL' || pocUpper === 'STAFF ONLY' || pocUpper === 'STAFF_ONLY') {
+          // Check if this person should see this grouped event
+          if (shouldShowGroupedEvent(poc, personType)) {
+
+            // Special handling for AUTH (no times)
+            const isAuth = dutyType.toUpperCase().includes('AUTH');
+
+            matches.push({
+              time: isAuth ? '' : start,
+              description: isAuth
+                ? `${dutyType} | ${poc}`
+                : `${dutyType} | ${poc} | ${start}-${end}`,
+              enhanced: {
+                section: 'Supervision',
+                duty: dutyType,
+                poc: poc,
+                start: isAuth ? null : start,
+                end: isAuth ? null : end,
+                isAuth: isAuth,
+                groupType: poc
+              }
+            });
+
+            console.log(`✓ Grouped Supervision: ${dutyType} for ${poc}`);
+          }
+        }
+      }
+    }
+  });
+
+  return matches;
 }
