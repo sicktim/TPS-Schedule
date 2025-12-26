@@ -831,6 +831,22 @@ function processSheet(sheetInfo, people) {
     const naEvents = parseNAForPerson(person.name, allData.na, sheetInfo.date);
     events.push(...naEvents);
 
+    // Add academics for students
+    // Note: Frontend can choose to show/hide via settings
+    if (person.class || person.type) {
+      const personType = person.class || person.type;
+      const academics = getAcademicsForStudent_Batch(personType, sheetInfo.date);
+      events.push(...academics);
+    }
+
+    // Add grouped events
+    // Note: Frontend can choose to show/hide via settings
+    if (person.class || person.type) {
+      const personType = person.class || person.type;
+      const groupedEvents = getGroupedEventsForPerson_Batch(sheet, allData, personType, sheetInfo.date);
+      events.push(...groupedEvents);
+    }
+
     results[person.name].events = events;
   });
 
@@ -1064,6 +1080,277 @@ function logMetricsToSheet(metrics) {
   } catch (e) {
     console.error('Could not log to sheet:', e);
   }
+}
+
+// ==========================================
+// ACADEMICS AND GROUPED EVENTS (for batch)
+// ==========================================
+
+/**
+ * Get academics for a student (batch processor version)
+ * Identical to Enhanced.gs version
+ */
+function getAcademicsForStudent_Batch(personType, date) {
+  const academics = [];
+
+  // Alpha students: 07:30-17:00
+  if (personType && personType.toLowerCase().includes('alpha')) {
+    academics.push({
+      date: date,
+      time: '0730-1700',
+      description: 'ACADEMICS | Alpha | 07:30-17:00',
+      enhanced: {
+        section: 'Academics',
+        type: 'Alpha',
+        start: '07:30',
+        end: '17:00',
+        status: 'Effective'
+      }
+    });
+  }
+
+  // Bravo students: 07:00-07:30, 08:30-09:30, 15:00-17:00
+  if (personType && personType.toLowerCase().includes('bravo')) {
+    academics.push({
+      date: date,
+      time: '0700-0730',
+      description: 'ACADEMICS | Bravo | 07:00-07:30',
+      enhanced: {
+        section: 'Academics',
+        type: 'Bravo',
+        start: '07:00',
+        end: '07:30',
+        status: 'Effective'
+      }
+    });
+    academics.push({
+      date: date,
+      time: '0830-0930',
+      description: 'ACADEMICS | Bravo | 08:30-09:30',
+      enhanced: {
+        section: 'Academics',
+        type: 'Bravo',
+        start: '08:30',
+        end: '09:30',
+        status: 'Effective'
+      }
+    });
+    academics.push({
+      date: date,
+      time: '1500-1700',
+      description: 'ACADEMICS | Bravo | 15:00-17:00',
+      enhanced: {
+        section: 'Academics',
+        type: 'Bravo',
+        start: '15:00',
+        end: '17:00',
+        status: 'Effective'
+      }
+    });
+  }
+
+  return academics;
+}
+
+/**
+ * Get grouped events (ALL, STAFF ONLY) for batch processor
+ * Uses pre-read allData arrays for efficiency
+ */
+function getGroupedEventsForPerson_Batch(sheet, allData, personType, date) {
+  const groupedEvents = [];
+
+  // Parse ground events for groups
+  groupedEvents.push(...parseGroundEventsForGroups_Batch(allData.ground, personType, date));
+
+  // Parse flying events for groups
+  groupedEvents.push(...parseFlyingEventsForGroups_Batch(allData.flying, personType, date));
+
+  // Parse supervision for groups
+  groupedEvents.push(...parseSupervisionForGroups_Batch(allData.supervision, personType, date));
+
+  return groupedEvents;
+}
+
+/**
+ * Parse ground events data for group indicators
+ */
+function parseGroundEventsForGroups_Batch(groundData, personType, date) {
+  const matches = [];
+
+  groundData.forEach((row, rowIndex) => {
+    const event = row[0];  // A: Event
+    const start = row[1];  // B: Start
+    const end = row[2];    // C: End
+
+    if (!event && !start) return;
+
+    // People in columns D onwards (index 3+)
+    const peopleColumns = row.slice(3);
+
+    peopleColumns.forEach(person => {
+      if (!person) return;
+      const personUpper = person.toUpperCase();
+
+      if (personUpper === 'ALL' || personUpper === 'STAFF ONLY' || personUpper === 'STAFF_ONLY') {
+        if (shouldShowGroupedEvent_Batch(person, personType)) {
+          matches.push({
+            date: date,
+            time: start,
+            type: 'Ground Events',
+            description: `${event} | ${person}`,
+            rangeSource: 'Ground Events',
+            enhanced: {
+              section: 'Ground Events',
+              event: event,
+              start: start,
+              end: end,
+              groupType: person,
+              status: {
+                effective: true,
+                cancelled: false,
+                partiallyEffective: false
+              }
+            }
+          });
+        }
+      }
+    });
+  });
+
+  return matches;
+}
+
+/**
+ * Parse flying events data for group indicators
+ */
+function parseFlyingEventsForGroups_Batch(flyingData, personType, date) {
+  const matches = [];
+
+  flyingData.forEach((row, rowIndex) => {
+    const model = row[0];       // A: Model
+    const briefStart = row[1];  // B: Brief
+    const etd = row[2];         // C: ETD
+    const eta = row[3];         // D: ETA
+    const debriefEnd = row[4];  // E: Debrief
+    const event = row[5];       // F: Event
+
+    if (!model && !event) return;
+
+    // Crew in columns G onwards (index 6+)
+    const crewColumns = row.slice(6);
+
+    crewColumns.forEach(crew => {
+      if (!crew) return;
+      const crewUpper = crew.toUpperCase();
+
+      if (crewUpper === 'ALL' || crewUpper === 'STAFF ONLY' || crewUpper === 'STAFF_ONLY') {
+        if (shouldShowGroupedEvent_Batch(crew, personType)) {
+          matches.push({
+            date: date,
+            time: briefStart,
+            type: 'Flying Events',
+            description: `${model} | ${event} | ${crew}`,
+            rangeSource: 'Flying Events',
+            enhanced: {
+              section: 'Flying Events',
+              model: model,
+              briefStart: briefStart,
+              etd: etd,
+              eta: eta,
+              debriefEnd: debriefEnd,
+              event: event,
+              groupType: crew,
+              status: {
+                effective: true,
+                cancelled: false,
+                partiallyEffective: false
+              }
+            }
+          });
+        }
+      }
+    });
+  });
+
+  return matches;
+}
+
+/**
+ * Parse supervision data for group indicators
+ */
+function parseSupervisionForGroups_Batch(supervisionData, personType, date) {
+  const matches = [];
+
+  supervisionData.forEach((row, rowIndex) => {
+    const dutyType = row[0];
+    if (!dutyType || dutyType === '' || dutyType === 'Supervision') return;
+
+    // Time slots (POC, Start, End) repeating
+    for (let col = 1; col < row.length - 2; col += 3) {
+      const poc = row[col];
+      const start = row[col + 1];
+      const end = row[col + 2];
+
+      if (!poc && !start && !end) continue;
+
+      if (poc) {
+        const pocUpper = poc.toUpperCase();
+
+        if (pocUpper === 'ALL' || pocUpper === 'STAFF ONLY' || pocUpper === 'STAFF_ONLY') {
+          if (shouldShowGroupedEvent_Batch(poc, personType)) {
+            const isAuth = dutyType.toUpperCase().includes('AUTH');
+
+            matches.push({
+              date: date,
+              time: isAuth ? '' : start,
+              type: 'Supervision',
+              description: isAuth ? `${dutyType} | ${poc}` : `${dutyType} | ${poc} | ${start}-${end}`,
+              rangeSource: 'Supervision',
+              enhanced: {
+                section: 'Supervision',
+                duty: dutyType,
+                poc: poc,
+                start: isAuth ? null : start,
+                end: isAuth ? null : end,
+                isAuth: isAuth,
+                groupType: poc
+              }
+            });
+          }
+        }
+      }
+    }
+  });
+
+  return matches;
+}
+
+/**
+ * Check if person should see grouped event (batch version)
+ * Identical logic to Enhanced.gs version
+ */
+function shouldShowGroupedEvent_Batch(eventType, personType) {
+  if (!eventType || !personType) return false;
+
+  const eventTypeUpper = eventType.toUpperCase();
+  const personTypeLower = personType.toLowerCase();
+
+  // ALL events: show to everyone
+  if (eventTypeUpper === 'ALL') {
+    return true;
+  }
+
+  // STAFF ONLY events: show to staff categories
+  if (eventTypeUpper === 'STAFF ONLY' || eventTypeUpper === 'STAFF_ONLY') {
+    return (
+      personTypeLower.includes('staff ip') ||
+      personTypeLower.includes('staff ifte/icso') ||
+      personTypeLower.includes('stc staff') ||
+      personTypeLower.includes('attached/support')
+    );
+  }
+
+  return false;
 }
 
 // =====================
