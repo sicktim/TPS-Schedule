@@ -24,13 +24,42 @@
 // ========================
 
 /**
+ * Check if current time is in overnight hours (8 PM - 5 AM Pacific)
+ * During these hours, schedules are not updated, so skip batch processing
+ * @returns {boolean} True if overnight hours, false otherwise
+ */
+function isOvernightHours() {
+  const now = new Date();
+  const pacificTimeStr = Utilities.formatDate(now, SEARCH_CONFIG.timezone, 'HH');
+  const pacificHour = parseInt(pacificTimeStr);
+
+  // Overnight hours: 8 PM (20) to 5 AM (4)
+  return pacificHour >= 20 || pacificHour < 5;
+}
+
+/**
  * Main batch processor - processes all upcoming schedule days
  * Run this every 15 minutes via time-based trigger
  *
  * Uses smart sheet finding to automatically start from the next available sheet
  * (handles gaps due to weekends, holidays, etc.)
+ *
+ * Skips processing during overnight hours (8 PM - 5 AM Pacific) to save quota
  */
 function batchProcessSchedule() {
+  // Skip processing during overnight hours (schedules don't change)
+  if (isOvernightHours()) {
+    const now = new Date();
+    const pacificTimeStr = Utilities.formatDate(now, SEARCH_CONFIG.timezone, 'hh:mm a');
+    console.log(`⏸️  Skipping batch process - overnight hours (${pacificTimeStr} Pacific)`);
+    console.log('   Next update: 5:00 AM Pacific');
+    return {
+      skipped: true,
+      reason: 'overnight_hours',
+      time: pacificTimeStr
+    };
+  }
+
   return batchProcessAll(7); // Process 7 days worth of schedules
 }
 

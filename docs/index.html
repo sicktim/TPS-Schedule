@@ -456,10 +456,13 @@
             const [pullStart, setPullStart] = useState(0);
             const [pullDistance, setPullDistance] = useState(0);
             const [isPulling, setIsPulling] = useState(false);
+            const [tapCount, setTapCount] = useState(0);
+            const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
             const debounceTimerRef = useRef(null);
             const currentRequestRef = useRef(null);
             const inputNameRef = useRef(config.searchName);
+            const tapTimerRef = useRef(null);
 
             // Fetch schedule
             const fetchSchedule = useCallback(async (searchName) => {
@@ -633,6 +636,34 @@
                 setPullStart(0);
             };
 
+            // Hidden feature: Triple-tap header to force manual refresh
+            const handleHeaderTap = () => {
+                const newCount = tapCount + 1;
+                setTapCount(newCount);
+
+                // Clear existing timer
+                if (tapTimerRef.current) {
+                    clearTimeout(tapTimerRef.current);
+                }
+
+                // Check if triple-tap detected
+                if (newCount >= 3) {
+                    console.log('🔄 Triple-tap detected - forcing manual refresh');
+                    setIsManualRefreshing(true);
+                    setTapCount(0);
+
+                    // Force a fresh fetch
+                    fetchSchedule(config.searchName).then(() => {
+                        setTimeout(() => setIsManualRefreshing(false), 1000);
+                    });
+                } else {
+                    // Reset tap count after 500ms
+                    tapTimerRef.current = setTimeout(() => {
+                        setTapCount(0);
+                    }, 500);
+                }
+            };
+
             // Initial fetch and auto-refresh
             useEffect(() => {
                 fetchSchedule(config.searchName);
@@ -678,7 +709,14 @@
 
                     {/* Header */}
                     <div className="flex items-center justify-between mb-4">
-                        <h1 className="text-xl font-semibold text-white">Squadron Schedule</h1>
+                        <h1
+                            className="text-xl font-semibold text-white cursor-pointer select-none"
+                            onClick={handleHeaderTap}
+                            title="Triple-tap to force refresh"
+                        >
+                            Squadron Schedule
+                            {isManualRefreshing && <span className="ml-2 text-blue-400 text-sm">🔄</span>}
+                        </h1>
                         <div className="flex gap-2">
                             <button
                                 onClick={handleRefresh}
@@ -799,28 +837,64 @@
                             </span>
                         </div>
                         {cacheMetadata && (() => {
-                            const cacheAge = Date.now() - new Date(cacheMetadata.cacheUpdated).getTime();
+                            const cacheDate = new Date(cacheMetadata.cacheUpdated);
+                            const now = new Date();
+                            const cacheAge = now - cacheDate;
                             const minutesOld = Math.floor(cacheAge / (1000 * 60));
-                            const isStale = minutesOld > 25; // 15 min trigger + 10 min buffer
+
+                            // Check if we're in overnight hours (8 PM - 5 AM Pacific)
+                            const pacificTimeStr = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+                            const pacificDate = new Date(pacificTimeStr);
+                            const pacificHour = pacificDate.getHours();
+                            const isOvernightHours = pacificHour >= 20 || pacificHour < 5;
+
+                            // Calculate next update time
+                            const getNextUpdateTime = () => {
+                                if (isOvernightHours) {
+                                    // Next update is at 5 AM Pacific
+                                    const nextUpdate = new Date(pacificDate);
+                                    nextUpdate.setHours(5, 0, 0, 0);
+                                    if (pacificHour >= 20) {
+                                        // After 8 PM, next update is tomorrow at 5 AM
+                                        nextUpdate.setDate(nextUpdate.getDate() + 1);
+                                    }
+                                    return nextUpdate;
+                                } else {
+                                    // During work hours, next update in ~15 min from last update
+                                    return new Date(cacheDate.getTime() + 15 * 60 * 1000);
+                                }
+                            };
+
+                            // Stale if >25 min old during work hours (not overnight)
+                            const isStale = !isOvernightHours && minutesOld > 25;
 
                             return (
-                                <div className={`flex items-center justify-between glass-card rounded px-2 py-1 ${
+                                <div className={`flex flex-col gap-1 glass-card rounded px-2 py-1 ${
                                     isStale ? 'border border-yellow-500/30' : ''
                                 }`}>
-                                    <span className="flex items-center gap-2">
-                                        <span className="text-green-400">⚡ Cached</span>
-                                    </span>
-                                    <span className={isStale ? 'text-yellow-400' : 'text-gray-400'}>
-                                        {cacheMetadata.cacheUpdated.toLocaleDateString('en-US', {
-                                            month: 'short',
-                                            day: 'numeric'
-                                        })} {cacheMetadata.cacheUpdated.toLocaleTimeString('en-US', {
-                                            hour: 'numeric',
-                                            minute: '2-digit',
-                                            hour12: true
-                                        })}
-                                        {isStale && <span className="ml-1">⚠️</span>}
-                                    </span>
+                                    <div className="flex items-center justify-between">
+                                        <span className={isStale ? 'text-yellow-400' : 'text-gray-400'}>
+                                            Data Updated: {cacheDate.toLocaleDateString('en-US', {
+                                                month: '2-digit',
+                                                day: '2-digit',
+                                                year: '2-digit'
+                                            })} {cacheDate.toLocaleTimeString('en-US', {
+                                                hour: 'numeric',
+                                                minute: '2-digit',
+                                                hour12: true
+                                            })}
+                                            {isStale && <span className="ml-1">⚠️</span>}
+                                        </span>
+                                    </div>
+                                    {isOvernightHours && (
+                                        <div className="text-xs text-blue-400">
+                                            Next update: {getNextUpdateTime().toLocaleTimeString('en-US', {
+                                                hour: 'numeric',
+                                                minute: '2-digit',
+                                                hour12: true
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })()}
