@@ -85,10 +85,10 @@
         const DEFAULT_CONFIG = {
             searchName: 'Sick',
             daysAhead: 4,
-            webAppUrl: 'https://script.google.com/macros/s/AKfycbzviTC3JlrGVlKqVTGHhzyfUKfc-9rKLFUgqRpyVKARSJN2CqesnFKe8GEAqXWjw-Tz/exec',
+            webAppUrl: 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec',
             version: 'enhanced',
             testMode: false,
-            testDate: '2025-12-15'
+            testDate: '2026-01-05'
         };
 
         // Load config from localStorage
@@ -380,6 +380,7 @@
             const [error, setError] = useState(null);
             const [showSettings, setShowSettings] = useState(false);
             const [lastUpdated, setLastUpdated] = useState(null);
+            const [cacheMetadata, setCacheMetadata] = useState(null);
             const [expandedEvents, setExpandedEvents] = useState(new Set());
             const [pullStart, setPullStart] = useState(0);
             const [pullDistance, setPullDistance] = useState(0);
@@ -443,8 +444,22 @@
                         const sortedEvents = sortEventsByTime(data.events);
                         setEvents(sortedEvents);
                         setLastUpdated(new Date()); // Only update when data is successfully received
+
+                        // Extract cache metadata
+                        if (data.cacheUpdated) {
+                            setCacheMetadata({
+                                cacheUpdated: new Date(data.cacheUpdated),
+                                tier: data.tier,
+                                dayRange: data.dayRange,
+                                batchDuration: data.batchDuration,
+                                totalEvents: data.totalEvents
+                            });
+                        } else {
+                            setCacheMetadata(null);
+                        }
                     } else {
                         setEvents([]);
+                        setCacheMetadata(null);
                     }
                 } catch (err) {
                     if (currentRequestRef.current === requestId) {
@@ -676,13 +691,34 @@
                     )}
 
                     {/* Status Bar */}
-                    <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                        <span>
-                            Showing: <span className="text-blue-400">{config.searchName}</span>
-                            {config.testMode && <span className="ml-2 text-orange-400">(Test: {config.testDate})</span>}
-                        </span>
-                        {lastUpdated && (
-                            <span>Updated: {lastUpdated.toLocaleTimeString()}</span>
+                    <div className="space-y-2 text-xs text-gray-500 mb-3">
+                        <div className="flex items-center justify-between">
+                            <span>
+                                Showing: <span className="text-blue-400">{config.searchName}</span>
+                                {config.testMode && <span className="ml-2 text-orange-400">(Test: {config.testDate})</span>}
+                            </span>
+                            {lastUpdated && (
+                                <span>Loaded: {lastUpdated.toLocaleTimeString()}</span>
+                            )}
+                        </div>
+                        {cacheMetadata && (
+                            <div className="flex items-center justify-between glass-card rounded px-2 py-1">
+                                <span className="flex items-center gap-2">
+                                    <span className="text-green-400">⚡ Cached</span>
+                                    {cacheMetadata.tier && (
+                                        <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                            cacheMetadata.tier === 'recent'
+                                                ? 'bg-green-500/20 text-green-400'
+                                                : 'bg-blue-500/20 text-blue-400'
+                                        }`}>
+                                            {cacheMetadata.tier}
+                                        </span>
+                                    )}
+                                </span>
+                                <span>
+                                    Updated: {cacheMetadata.cacheUpdated.toLocaleTimeString()}
+                                </span>
+                            </div>
                         )}
                     </div>
 
@@ -758,7 +794,12 @@
                     <div className="mt-6 text-center text-xs text-gray-600 space-y-1">
                         <p>Auto-refreshes every 15 minutes</p>
                         <p>Add to home screen for quick access</p>
-                        <p className="text-gray-700">v5.0 • Built: 2025-12-25 04:15</p>
+                        {cacheMetadata && (
+                            <p className="text-gray-500">
+                                Cache: {cacheMetadata.dayRange} • {cacheMetadata.totalEvents} total events
+                            </p>
+                        )}
+                        <p className="text-gray-700">v5.0-tiered • Built: 2025-12-26 21:30</p>
                     </div>
                 </div>
             );
