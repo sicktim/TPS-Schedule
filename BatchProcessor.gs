@@ -5,12 +5,12 @@
  * Uses tiered batch processing for optimal quota usage.
  *
  * TRIGGER CONFIGURATION:
- * - Recent tier (days 0-2): Every 20 minutes → 35.3 min/day quota
+ * - Recent tier (days 0-2): Every 15 minutes → 47.0 min/day quota
  * - Upcoming tier (days 3-7): Every 30 minutes → 25.9 min/day quota
- * - TOTAL: 61.2 min/day (68% of 90 min daily limit)
+ * - TOTAL: 72.9 min/day (81% of 90 min daily limit)
  *
  * DATA FRESHNESS:
- * - Days 0-2 (today + 2): Up to 20 minutes old
+ * - Days 0-2 (today + 2): Up to 15 minutes old
  * - Days 3-7 (rest of week): Up to 30 minutes old
  *
  * Cache Limits (Google Apps Script):
@@ -25,8 +25,8 @@
 
 /**
  * TIER 1: Process RECENT days (0-2: today through day after tomorrow)
- * Run this every 20 minutes via time-based trigger
- * Quota usage: 72 runs/day × 0.49 min = 35.3 min/day
+ * Run this every 15 minutes via time-based trigger
+ * Quota usage: 96 runs/day × 0.49 min = 47.0 min/day
  */
 function batchProcessRecent() {
   return batchProcessDayRange(0, 3, 'recent'); // Days 0, 1, 2

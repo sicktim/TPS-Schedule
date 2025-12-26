@@ -4,9 +4,9 @@
  * Creates time-based triggers for the tiered batch processing system
  *
  * QUOTA USAGE (verified with real execution times):
- * - Recent (every 20 min): 72 runs/day × 0.49 min = 35.3 min/day
+ * - Recent (every 15 min): 96 runs/day × 0.49 min = 47.0 min/day
  * - Upcoming (every 30 min): 48 runs/day × 0.54 min = 25.9 min/day
- * - TOTAL: 61.2 min/day (68% of 90 min daily limit)
+ * - TOTAL: 72.9 min/day (81% of 90 min daily limit)
  */
 
 // ======================
@@ -16,12 +16,12 @@
 const TRIGGER_CONFIG = {
   recent: {
     functionName: 'batchProcessRecent',
-    intervalMinutes: 20,
+    intervalMinutes: 15,  // Valid: 1, 5, 10, 15, 30
     description: 'Process days 0-2 (today through day after tomorrow)'
   },
   upcoming: {
     functionName: 'batchProcessUpcoming',
-    intervalMinutes: 30,
+    intervalMinutes: 30,  // Valid: 1, 5, 10, 15, 30
     description: 'Process days 3-7 (upcoming week)'
   }
 };
