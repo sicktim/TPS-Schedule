@@ -686,9 +686,10 @@ function getAllPeople() {
   const ss = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
 
   // Get all sheets to collect people from each
-  const sheets = getRelevantSheets();
+  // Use smart sheet finding to get available sheets
+  const sheets = getSmartSheetRange(7);
   if (sheets.length === 0) {
-    throw new Error('No sheets found');
+    throw new Error('No sheets found - check if any schedule sheets exist');
   }
 
   const peopleMap = new Map(); // Use Map to deduplicate
