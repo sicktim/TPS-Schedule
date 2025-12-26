@@ -1160,6 +1160,180 @@ function getBatchMetadata() {
 }
 
 /**
+ * View ALL cached data for troubleshooting
+ *
+ * Shows:
+ * - All cached people and their event counts
+ * - Cache sizes and metadata
+ * - Batch processing info
+ * - Specific person's full schedule (optional)
+ *
+ * Usage:
+ *   viewAllCachedData();              // Show summary of all cached data
+ *   viewAllCachedData('Vantiger');     // Show Vantiger's full cached schedule
+ */
+function viewAllCachedData(personName = null) {
+  console.log('='.repeat(70));
+  console.log('📦 CACHE VIEWER - All Cached Data');
+  console.log('='.repeat(70));
+
+  const cache = CacheService.getScriptCache();
+
+  // 1. Get batch metadata
+  console.log('\n📊 BATCH METADATA:');
+  console.log('-'.repeat(70));
+  const metadata = cache.get('batch_metadata');
+  if (metadata) {
+    const meta = JSON.parse(metadata);
+    console.log(`Last Run: ${meta.lastRun}`);
+    console.log(`Duration: ${meta.duration}s`);
+    console.log(`People Processed: ${meta.peopleProcessed}`);
+    console.log(`Events Found: ${meta.eventsFound}`);
+    console.log(`Sheets Processed: ${meta.sheetsProcessed}`);
+    console.log(`Total Cache Size: ${meta.totalCacheSizeMB} MB`);
+    console.log(`Average Per Person: ${meta.averagePersonSizeKB} KB`);
+    console.log(`Errors: ${meta.errors}`);
+  } else {
+    console.log('⚠️  No batch metadata found (batch processing may not have run yet)');
+  }
+
+  // 2. Get all people
+  console.log('\n👥 CACHED PEOPLE:');
+  console.log('-'.repeat(70));
+
+  try {
+    const people = getAllPeople();
+    console.log(`Total people in sheets: ${people.length}`);
+
+    let cachedCount = 0;
+    let totalEvents = 0;
+    let totalSize = 0;
+    const cachedPeople = [];
+
+    people.forEach(person => {
+      const cached = cache.get(`schedule_${person.name}`);
+
+      if (cached) {
+        cachedCount++;
+        const data = JSON.parse(cached);
+        const sizeBytes = Utilities.newBlob(cached).getBytes().length;
+        const sizeKB = (sizeBytes / 1024).toFixed(2);
+
+        totalEvents += data.events ? data.events.length : 0;
+        totalSize += sizeBytes;
+
+        cachedPeople.push({
+          name: person.name,
+          class: person.class,
+          type: person.type,
+          events: data.events ? data.events.length : 0,
+          days: data.days ? data.days.length : 0,
+          sizeKB: parseFloat(sizeKB),
+          lastUpdated: data.lastUpdated || 'Unknown'
+        });
+      }
+    });
+
+    console.log(`\nCached: ${cachedCount}/${people.length} people`);
+    console.log(`Total events in cache: ${totalEvents}`);
+    console.log(`Total cache size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+
+    // 3. Show top 10 largest caches
+    console.log('\n🔝 TOP 10 LARGEST CACHES:');
+    console.log('-'.repeat(70));
+    const sortedBySize = cachedPeople.sort((a, b) => b.sizeKB - a.sizeKB);
+    sortedBySize.slice(0, 10).forEach((p, idx) => {
+      console.log(`${idx + 1}. ${p.name.padEnd(20)} - ${p.events} events, ${p.sizeKB} KB, ${p.class}`);
+    });
+
+    // 4. Show top 10 most events
+    console.log('\n📅 TOP 10 MOST EVENTS:');
+    console.log('-'.repeat(70));
+    const sortedByEvents = [...cachedPeople].sort((a, b) => b.events - a.events);
+    sortedByEvents.slice(0, 10).forEach((p, idx) => {
+      console.log(`${idx + 1}. ${p.name.padEnd(20)} - ${p.events} events across ${p.days} days`);
+    });
+
+    // 5. Show people with NO cache
+    const missingCache = people.filter(p => !cache.get(`schedule_${p.name}`));
+    if (missingCache.length > 0) {
+      console.log('\n⚠️  PEOPLE WITHOUT CACHE:');
+      console.log('-'.repeat(70));
+      missingCache.forEach(p => {
+        console.log(`- ${p.name} (${p.class})`);
+      });
+    }
+
+    // 6. If specific person requested, show their full data
+    if (personName) {
+      console.log('\n'.repeat(2));
+      console.log('='.repeat(70));
+      console.log(`📋 DETAILED VIEW: ${personName}`);
+      console.log('='.repeat(70));
+
+      const personCache = cache.get(`schedule_${personName}`);
+
+      if (personCache) {
+        const data = JSON.parse(personCache);
+        const sizeBytes = Utilities.newBlob(personCache).getBytes().length;
+
+        console.log(`\nPerson: ${data.person}`);
+        console.log(`Class: ${data.class}`);
+        console.log(`Type: ${data.type}`);
+        console.log(`Last Updated: ${data.lastUpdated}`);
+        console.log(`Version: ${data.version || 'Unknown'}`);
+        console.log(`Days Covered: ${data.days ? data.days.join(', ') : 'None'}`);
+        console.log(`Total Events: ${data.events ? data.events.length : 0}`);
+        console.log(`Cache Size: ${(sizeBytes / 1024).toFixed(2)} KB`);
+
+        if (data.events && data.events.length > 0) {
+          console.log('\n📅 EVENTS:');
+          console.log('-'.repeat(70));
+
+          // Group by day
+          const byDay = {};
+          data.events.forEach(evt => {
+            const day = evt.date || 'Unknown';
+            if (!byDay[day]) byDay[day] = [];
+            byDay[day].push(evt);
+          });
+
+          Object.keys(byDay).sort().forEach(day => {
+            console.log(`\n${day}:`);
+            byDay[day].forEach(evt => {
+              const time = evt.time || 'TBD';
+              const desc = evt.description || evt.type || 'No description';
+              const section = evt.enhanced ? evt.enhanced.section : evt.type;
+              console.log(`  ${time.padEnd(12)} [${section.padEnd(15)}] ${desc.substring(0, 60)}`);
+            });
+          });
+        }
+
+        console.log('\n📄 FULL JSON:');
+        console.log('-'.repeat(70));
+        console.log(JSON.stringify(data, null, 2));
+
+      } else {
+        console.log(`\n❌ No cached data found for "${personName}"`);
+        console.log('\nDid you mean one of these?');
+        const similar = people
+          .filter(p => p.name.toLowerCase().includes(personName.toLowerCase()))
+          .slice(0, 5);
+        similar.forEach(p => console.log(`  - ${p.name} (${p.class})`));
+      }
+    }
+
+  } catch (e) {
+    console.error(`Error reading cache: ${e}`);
+    console.error(e.stack);
+  }
+
+  console.log('\n' + '='.repeat(70));
+  console.log('💡 TIP: Run viewAllCachedData("PersonName") to see full details for someone');
+  console.log('='.repeat(70));
+}
+
+/**
  * Test TIERED batch processors with FIXED TEST DATES (Jan 5, 2026+)
  * Tests the two-tier system with proper day ranges
  */
