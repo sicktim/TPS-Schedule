@@ -188,50 +188,83 @@ function batchProcessAllSchedules() {
 // =============================
 
 /**
- * Get list of sheets to process (today + next 4 days)
- * @param {Date} startDate - Optional: Start date (default: today)
+ * Get list of ALL date sheets available in the spreadsheet
+ * Finds all sheets matching date patterns (e.g., "Mon 15 Dec", "Tuesday, 16 Dec")
  */
 function getRelevantSheets(startDate) {
   const sheets = [];
   const ss = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
   const allSheets = ss.getSheets();
 
-  // Get today + next 4 days (or from specified start date)
-  const today = startDate || new Date();
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayNamesShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-  for (let i = 0; i < 5; i++) {
-    const targetDate = new Date(today);
-    targetDate.setDate(today.getDate() + i);
+  // Regex patterns to match date sheets
+  // Matches: "Mon 15 Dec", "Monday, 15 Dec", "Monday Dec 15", "Monday 15 Dec"
+  const dayPattern = `(${dayNamesShort.join('|')}|${dayNames.join('|')})`;
+  const monthPattern = `(${monthNames.join('|')})`;
+  const datePattern = new RegExp(`^${dayPattern},?\\s+\\d{1,2}\\s+${monthPattern}$|^${dayPattern}\\s+${monthPattern}\\s+\\d{1,2}$`, 'i');
 
-    const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][targetDate.getDay()];
-    const dayNameShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][targetDate.getDay()];
-    const monthName = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][targetDate.getMonth()];
-    const day = targetDate.getDate();
+  // Scan all sheets and find date sheets
+  allSheets.forEach(sheet => {
+    const sheetName = sheet.getName();
 
-    // Try multiple sheet name formats
-    const sheetName1 = `${dayNameShort} ${day} ${monthName}`;  // "Mon 15 Dec" (most common)
-    const sheetName2 = `${dayName}, ${day} ${monthName}`;      // "Monday, 15 Dec"
-    const sheetName3 = `${dayName} ${monthName} ${day}`;       // "Monday Dec 15"
-    const sheetName4 = `${dayName} ${day} ${monthName}`;       // "Monday 15 Dec"
+    // Check if sheet name matches date pattern
+    if (datePattern.test(sheetName)) {
+      // Parse the date from sheet name
+      const parsedDate = parseDateFromSheetName(sheetName, dayNames, dayNamesShort, monthNames);
 
-    let sheet = ss.getSheetByName(sheetName1) ||
-                ss.getSheetByName(sheetName2) ||
-                ss.getSheetByName(sheetName3) ||
-                ss.getSheetByName(sheetName4);
-
-    if (sheet) {
-      sheets.push({
-        sheetName: sheet.getName(),
-        date: targetDate.toISOString().split('T')[0],
-        dayName: dayName,
-        sheet: sheet
-      });
-    } else {
-      console.warn(`Sheet not found. Tried: "${sheetName1}", "${sheetName2}", "${sheetName3}", "${sheetName4}"`);
+      if (parsedDate) {
+        sheets.push({
+          sheetName: sheetName,
+          date: parsedDate.toISOString().split('T')[0],
+          dayName: dayNames[parsedDate.getDay()],
+          sheet: sheet,
+          sortKey: parsedDate.getTime() // For sorting
+        });
+      }
     }
-  }
+  });
+
+  // Sort by date (earliest first)
+  sheets.sort((a, b) => a.sortKey - b.sortKey);
+
+  console.log(`Found ${sheets.length} date sheets: ${sheets.map(s => s.sheetName).join(', ')}`);
 
   return sheets;
+}
+
+/**
+ * Parse a date from sheet name like "Mon 15 Dec" or "Monday, 15 Dec"
+ */
+function parseDateFromSheetName(sheetName, dayNames, dayNamesShort, monthNames) {
+  try {
+    // Extract day number and month name
+    const dayMatch = sheetName.match(/\d{1,2}/);
+    const monthMatch = sheetName.match(new RegExp(monthNames.join('|'), 'i'));
+
+    if (!dayMatch || !monthMatch) return null;
+
+    const day = parseInt(dayMatch[0]);
+    const monthIndex = monthNames.findIndex(m => m.toLowerCase() === monthMatch[0].toLowerCase());
+
+    if (monthIndex === -1 || day < 1 || day > 31) return null;
+
+    // Assume current year (or next year if month has passed)
+    const now = new Date();
+    let year = now.getFullYear();
+
+    // If the month is in the past, assume next year
+    if (monthIndex < now.getMonth()) {
+      year++;
+    }
+
+    return new Date(year, monthIndex, day);
+  } catch (e) {
+    console.warn(`Could not parse date from sheet name: ${sheetName}`);
+    return null;
+  }
 }
 
 /**
