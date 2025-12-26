@@ -84,7 +84,6 @@
         // Default configuration
         const DEFAULT_CONFIG = {
             searchName: '',  // Empty - will prompt on first use
-            daysAhead: 7,  // Show 7 days worth of schedule
             webAppUrl: 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec',
             version: 'enhanced',
             configVersion: 3,  // Increment to force migration (removed test mode)
@@ -476,13 +475,14 @@
 
                 try {
                     // Build URL with parameters
-                    let url = `${config.webAppUrl}?name=${encodeURIComponent(searchName)}&days=${config.daysAhead}`;
+                    let url = `${config.webAppUrl}?name=${encodeURIComponent(searchName)}`;
 
                     // Add version parameter
                     if (config.version) {
                         url += `&version=${config.version}`;
                     }
 
+                    // Add cache-busting timestamp
                     url += `&_t=${requestId}`;
 
                     console.log('Fetching:', url);
@@ -547,7 +547,7 @@
                         setLoading(false);
                     }
                 }
-            }, [config.webAppUrl, config.daysAhead, config.version]);
+            }, [config.webAppUrl, config.version]);
 
             // Debounced fetch
             const debouncedFetch = useCallback((searchName) => {
@@ -736,23 +736,6 @@
                                         placeholder="Enter name to search"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">Results update as you type</p>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm text-gray-400 mb-1">Days Ahead</label>
-                                    <select
-                                        value={config.daysAhead}
-                                        onChange={(e) => {
-                                            const newConfig = { ...config, daysAhead: parseInt(e.target.value) };
-                                            setConfig(newConfig);
-                                        }}
-                                        className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
-                                    >
-                                        <option value="1">1 day</option>
-                                        <option value="4">4 days</option>
-                                        <option value="5">5 days</option>
-                                        <option value="7">7 days</option>
-                                    </select>
                                 </div>
 
                                 <button
