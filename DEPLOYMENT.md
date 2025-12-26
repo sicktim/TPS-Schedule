@@ -318,9 +318,14 @@ function batchProcessSchedule() {
 
 ### Change Batch Processing Frequency
 
-**Current:** Every 15 minutes (96 runs/day, ~52 min quota)
+**Current:** Every 15 minutes during work hours (5 AM - 8 PM Pacific)
 
-**To change:**
+**Overnight Hours Optimization:**
+- Batch processing automatically skips 8 PM - 5 AM Pacific (9 hours)
+- Saves quota when schedules don't change overnight
+- Frontend shows "Next update: 5:00 AM" during overnight hours
+
+**To change interval:**
 ```javascript
 // TriggerSetup.gs
 
@@ -336,7 +341,13 @@ function setupAllTriggers() {
 
 **Valid intervals:** 1, 5, 10, 15, 30 minutes
 
-**Quota impact:**
+**Quota impact (with overnight skip):**
+- Trigger fires: 96 times/day (every 15 min × 24 hours)
+- Actually processes: ~60 times/day (15 hours work × 4 runs/hour)
+- Quota used: 60 runs × 0.9 min = **54 min/day (60% quota)**
+- Saved vs 24/7: 32 min/day (36% savings)
+
+**Without overnight skip (if disabled):**
 - Every 15 min: 96 runs × 0.9 min = 86 min/day (96% quota)
 - Every 30 min: 48 runs × 0.9 min = 43 min/day (48% quota)
 
@@ -362,6 +373,26 @@ cache.put(cacheKey, json, 21600); // Change seconds here
 ```
 
 **Note:** Google Apps Script max TTL is 6 hours (21,600 seconds)
+
+### Hidden Manual Refresh Feature
+
+**What it does:**
+- Allows users to force a fresh data fetch without waiting for auto-refresh
+- Hidden feature activated by triple-tapping the "Squadron Schedule" header
+
+**How to use:**
+1. Open the web app in your browser
+2. Quickly tap "Squadron Schedule" three times
+3. You'll see a 🔄 icon appear briefly
+4. Fresh data is fetched from the API
+
+**Technical details:**
+- Frontend feature only (fetches from cache, doesn't trigger batch process)
+- Shows visual feedback during refresh
+- Tap detection window: 500ms
+- Resets after successful triple-tap or timeout
+
+**Note:** This fetches the latest cached data from the API. To truly refresh the cache, run `batchProcessSchedule()` manually in Apps Script.
 
 ---
 
