@@ -103,10 +103,42 @@ function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null, sho
 
   console.log(`⚡ ENHANCED VERSION - Searching for: "${searchName}"`);
   console.log(`Days to search: ${upcomingDays.length}`);
+  console.log(`Show Academics: ${showAcademics}, Show Grouped Events: ${showGroupedEvents}`);
+
+  // Get person type once at the start (only needed if academics or grouped events are enabled)
+  if (showAcademics || showGroupedEvents) {
+    try {
+      // Get any available sheet to look up person type
+      const firstDay = upcomingDays[0];
+      const firstSheetName = generateSheetName(firstDay);
+      const firstSheet = spreadsheet.getSheetByName(firstSheetName);
+
+      if (firstSheet) {
+        personType = getPersonType(firstSheet, searchName);
+        console.log(`Person type determined: ${personType}`);
+      } else {
+        console.warn(`Could not find sheet ${firstSheetName} to determine person type`);
+      }
+    } catch (e) {
+      console.warn(`Error determining person type: ${e}`);
+    }
+  }
 
   upcomingDays.forEach(date => {
     const sheetName = generateSheetName(date);
     console.log(`Looking for sheet: "${sheetName}"`);
+
+    const sheet = spreadsheet.getSheetByName(sheetName);
+
+    if (!sheet) {
+      console.log(`Sheet not found: ${sheetName}`);
+      searchedSheets.push({
+        date: formatDateISO(date),
+        sheetName: sheetName,
+        eventsFound: 0
+      });
+      return;  // Skip this day
+    }
 
     // Parse all sections with enhanced detail
     const dayEvents = searchNameInSheet_Enhanced(
@@ -114,6 +146,24 @@ function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null, sho
       sheetName,
       searchName
     );
+
+    // Add academics if enabled and person is a student
+    if (showAcademics && personType) {
+      const academics = getAcademicsForStudent(personType, formatDateISO(date));
+      if (academics.length > 0) {
+        console.log(`Adding ${academics.length} academic events for ${personType}`);
+        dayEvents.push(...academics);
+      }
+    }
+
+    // Add grouped events if enabled
+    if (showGroupedEvents && personType) {
+      const groupedEvents = getGroupedEventsForPerson(sheet, personType, formatDateISO(date));
+      if (groupedEvents.length > 0) {
+        console.log(`Adding ${groupedEvents.length} grouped events for ${personType}`);
+        dayEvents.push(...groupedEvents);
+      }
+    }
 
     searchedSheets.push({
       date: formatDateISO(date),
@@ -460,6 +510,67 @@ function parseNAsEnhanced(sheet, searchName) {
   });
 
   return matches;
+}
+
+
+/**
+ * getPersonType() - Find person's category from Student/Staff list (rows 120-169)
+ *
+ * Categories include: "Students (Alpha)", "Students (Bravo)", "Staff IP",
+ * "Staff IFTE/ICSO", "STC Staff", "Attached/Support"
+ *
+ * @param {Sheet} sheet - Any sheet from the spreadsheet
+ * @param {string} searchName - Name to search for
+ * @returns {string|null} Person's category or null if not found
+ */
+function getPersonType(sheet, searchName) {
+  try {
+    // Student/Staff list is in rows 120-169
+    const listRange = sheet.getRange('A120:Z169');
+    const listValues = listRange.getDisplayValues();
+
+    // Search for the person's name in this area
+    for (let rowIndex = 0; rowIndex < listValues.length; rowIndex++) {
+      const row = listValues[rowIndex];
+
+      // Check if any cell in this row contains the search name
+      for (let colIndex = 0; colIndex < row.length; colIndex++) {
+        const cell = row[colIndex];
+
+        if (cell && typeof cell === 'string' &&
+            cell.toLowerCase().includes(searchName.toLowerCase())) {
+
+          // Found the person! Now find their category
+          // Category is typically in the first column or a header above
+          // Look backwards in the same column to find category header
+          for (let headerRow = rowIndex; headerRow >= 0; headerRow--) {
+            const potentialCategory = listValues[headerRow][0]; // Column A
+
+            if (potentialCategory && (
+              potentialCategory.includes('Students') ||
+              potentialCategory.includes('Staff') ||
+              potentialCategory.includes('Attached') ||
+              potentialCategory.includes('STC')
+            )) {
+              console.log(`Found person type: ${potentialCategory} for ${searchName}`);
+              return potentialCategory;
+            }
+          }
+
+          // If we found the person but no category, return a generic indicator
+          console.log(`Found ${searchName} but couldn't determine category`);
+          return 'Unknown';
+        }
+      }
+    }
+
+    console.log(`Could not find ${searchName} in student/staff list`);
+    return null;
+
+  } catch (e) {
+    console.warn(`Error getting person type: ${e}`);
+    return null;
+  }
 }
 
 
