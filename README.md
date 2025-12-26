@@ -1,6 +1,6 @@
 # TPS Schedule - Smart Schedule Display System
 
-**Version:** 6.2 (Simplified Single Trigger)
+**Version:** 6.3 (Academics & Grouped Events)
 **Last Updated:** December 26, 2025
 **Status:** ✅ Production Ready
 
@@ -13,6 +13,8 @@ TPS Schedule is an intelligent squadron schedule display system that:
 - **Displays N days** of schedule starting from that sheet
 - **Caches results** for instant page loads (<100ms)
 - **Updates automatically** via background batch processing
+- **Shows academics** for Alpha/Bravo students (optional)
+- **Shows grouped events** (ALL, STAFF ONLY) based on person type (optional)
 
 ### Key Features
 
@@ -22,8 +24,9 @@ TPS Schedule is an intelligent squadron schedule display system that:
 ✅ **Auto-Updates** - Single trigger runs every 15 minutes (work hours only)
 ✅ **Overnight Skip** - Automatically pauses 8 PM - 5 AM Pacific to save quota
 ✅ **Mobile Optimized** - Works great on phones/tablets
-✅ **Hidden Refresh** - Triple-tap header to re-fetch from cache (same as refresh button)
-✅ **No Test Modes** - Always shows live, current data
+✅ **Force Refresh** - Triple-tap header to trigger batch processing
+✅ **Academics Display** - Shows class times for Alpha/Bravo students
+✅ **Grouped Events** - Shows ALL and STAFF ONLY events based on person type
 
 ---
 
@@ -35,20 +38,16 @@ TPS Schedule is an intelligent squadron schedule display system that:
 |------|---------|--------|
 | **Main.gs** | API router and cache handler | ✅ Active |
 | **Config.gs** | Configuration (spreadsheet ID, timezone) | ✅ Active |
+| **Enhanced.gs** | Enhanced data processor with academics/grouped events | ✅ Active |
 | **BatchProcessor.gs** | Background batch processing | ✅ Active |
 | **SmartSheetFinder.gs** | Intelligent sheet discovery | ✅ Active |
 | **TriggerSetup.gs** | Automated trigger configuration | ✅ Active |
-| **DiagnosticChecks.gs** | Troubleshooting utilities | ✅ Active |
-| **Enhanced.gs** | Enhanced data processor | ✅ Active |
-| **TPS-Schedule-SIMPLIFIED.gs** | Simplified processor (fallback) | ✅ Active |
-| **TPS-Schedule-OPTIMIZED.gs** | Optimized processor (fallback) | ✅ Active |
 
 ### Active Files (Frontend)
 
 | File | Purpose |
 |------|---------|
-| **docs/index.html** | Mobile-friendly web interface |
-| **WebApp.html** | Alternative Apps Script HTML deployment |
+| **docs/index.html** | Mobile-friendly web interface with academics/grouped events support |
 
 ### Documentation
 
@@ -56,13 +55,13 @@ TPS Schedule is an intelligent squadron schedule display system that:
 |------|---------|
 | **README.md** | This file - project overview |
 | **DEPLOYMENT.md** | Step-by-step deployment guide |
-| **PERFORMANCE_ANALYSIS.md** | Performance metrics and analysis |
 
 ### Archive
 
 | Folder | Contents |
 |--------|----------|
 | **archive/** | Obsolete files from previous versions |
+| **archive/old-versions/** | TPS-Schedule-OPTIMIZED.gs, TPS-Schedule-SIMPLIFIED.gs |
 
 ---
 
@@ -74,13 +73,10 @@ TPS Schedule is an intelligent squadron schedule display system that:
 2. Copy these files from root directory:
    - Config.gs
    - Main.gs
+   - Enhanced.gs
    - BatchProcessor.gs
    - SmartSheetFinder.gs
    - TriggerSetup.gs
-   - DiagnosticChecks.gs
-   - Enhanced.gs
-   - TPS-Schedule-SIMPLIFIED.gs
-   - TPS-Schedule-OPTIMIZED.gs
 
 3. Update `Config.gs` with your spreadsheet ID
 4. Deploy as Web App
@@ -100,8 +96,12 @@ testSmartSheetRange();    // Get 7 days worth
 // Test batch processing
 batchProcessSchedule();   // Run manual batch update
 
-// Check system health
-runAllDiagnostics();      // Full diagnostic check
+// Test person type detection
+testPersonTypeDetection(); // Verify person categories work
+
+// View cached data
+viewAllCachedData();      // See all cached schedules
+viewAllCachedData('Vantiger'); // See specific person's cache
 ```
 
 ### 3. Deploy Frontend
@@ -109,10 +109,7 @@ runAllDiagnostics();      // Full diagnostic check
 Option A: **GitHub Pages** (recommended)
 - Push `docs/index.html` to GitHub
 - Enable GitHub Pages from `docs/` folder
-
-Option B: **Apps Script HTML**
-- Copy `WebApp.html` to your Apps Script project
-- Deploy as Web App
+- Update `webAppUrl` in localStorage or first-time setup
 
 ---
 
@@ -138,7 +135,7 @@ Single trigger every 15 minutes (work hours only):
   1. Check if overnight hours (8 PM - 5 AM) → Skip if yes
   2. Find next available sheet
   3. Get 7 days worth of available sheets
-  4. Extract people from sheets (292 people)
+  4. Extract people from sheets
   5. Process each sheet for each person
   6. Cache results (6-hour TTL)
   7. Update metadata
@@ -152,6 +149,36 @@ User requests schedule:
   2. If cache miss → Process in real-time (~30s)
   3. Cache result for next request
 ```
+
+### Academics Feature
+
+Shows hardcoded class times for students based on their type:
+
+**Alpha Students:** 07:30-17:00 (single block)
+**Bravo Students:**
+  - 07:00-07:30
+  - 08:30-09:30
+  - 15:00-17:00
+
+**Toggle:** Off by default, user can enable in settings
+
+### Grouped Events Feature
+
+Shows events marked with group indicators in the person/crew column:
+
+**ALL:** Shows to everyone
+**STAFF ONLY:** Shows only to:
+  - Staff IP
+  - Staff IFTE/ICSO
+  - STC Staff
+  - Attached/Support
+
+**Toggle:** Off by default, user can enable in settings
+
+**How it works:**
+1. Backend searches person/crew columns for "ALL", "STAFF ONLY"
+2. Checks if person should see event via `shouldShowGroupedEvent()`
+3. If yes, adds event to their schedule with proper details
 
 ---
 
@@ -195,8 +222,6 @@ const SEARCH_CONFIG = {
 - **Spreadsheet Reads:** ~720/day (3.6% of 20,000 limit) - reduced by overnight skip
 - **Trigger Runtime:** ~54 min/day (60% of 90 min limit) - includes overnight skip savings
 
-**See [PERFORMANCE_ANALYSIS.md](PERFORMANCE_ANALYSIS.md) for detailed metrics.**
-
 ---
 
 ## 🐛 Troubleshooting
@@ -205,7 +230,8 @@ const SEARCH_CONFIG = {
 
 ```javascript
 // Check trigger status
-checkTriggerExecutionStatus();
+const triggers = ScriptApp.getProjectTriggers();
+console.log('Active triggers:', triggers.length);
 
 // Manually refresh cache
 batchProcessSchedule();
@@ -215,23 +241,28 @@ batchProcessSchedule();
 
 ```javascript
 // Check what sheets are available
-checkAvailableSheets();
+const sheets = getSmartSheetRange(7);
+console.log('Available sheets:', sheets.map(s => s.sheetName));
 
 // Test smart sheet finder
 testFindNextSheet();
 ```
 
-### Date Mismatch
+### Academics/Grouped Events Not Showing
 
 ```javascript
-// Check date formats in cache
-checkCacheDateFormats();
+// Test person type detection
+testPersonTypeDetection();
 
-// Verify timezone settings
-console.log(SEARCH_CONFIG.timezone);
+// View cached data for a person
+viewAllCachedData('PersonName');
+
+// Test academics feature
+testAcademicsFeature();
+
+// Test grouped events feature
+testGroupedEventsFeature();
 ```
-
-**Run `runAllDiagnostics()` for comprehensive health check.**
 
 ---
 
@@ -240,35 +271,61 @@ console.log(SEARCH_CONFIG.timezone);
 ### Web App Endpoint
 
 ```
-GET https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec?name=Sick&days=7
+GET https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec?name=Sick&days=7&showAcademics=true&showGroupedEvents=true
 ```
 
 **Parameters:**
 - `name` (required): Person's name to search for
 - `days` (optional): Number of days to display (default: 7)
-- `version` (optional): Processor version (simplified/optimized/enhanced)
+- `version` (optional): Processor version (default: "simplified")
+- `showAcademics` (optional): Show academic times for students (default: false)
+- `showGroupedEvents` (optional): Show ALL/STAFF ONLY events (default: false)
+- `forceRefresh` (optional): Trigger batch processing (default: false)
 
 **Response:**
 ```json
 {
-  "person": "Sick",
-  "class": "26A",
-  "type": "Students (Bravo)",
+  "searchName": "Sick",
   "events": [
     {
       "date": "2026-01-05",
-      "day": "Monday",
-      "time": "1400-1600",
-      "event": "FORM/1",
-      "section": "Flying Events",
-      ...
+      "dayName": "Monday",
+      "sheetName": "Mon 5 Jan",
+      "events": [
+        {
+          "time": "0700-0730",
+          "description": "ACADEMICS | Bravo | 07:00-07:30",
+          "enhanced": {
+            "section": "Academics",
+            "type": "Bravo",
+            "start": "07:00",
+            "end": "07:30",
+            "status": "Effective"
+          }
+        },
+        {
+          "time": "1000",
+          "description": "Staff Meeting | ALL",
+          "enhanced": {
+            "section": "Ground Events",
+            "event": "Staff Meeting",
+            "start": "1000",
+            "end": "1100",
+            "groupType": "ALL",
+            "status": {
+              "effective": true,
+              "cancelled": false,
+              "partiallyEffective": false
+            }
+          }
+        }
+      ]
     }
   ],
-  "days": ["2026-01-05", "2026-01-06", ...],
+  "totalEvents": 2,
   "lastUpdated": "2025-12-26T12:30:00.000Z",
-  "version": "5.0-smart",
-  "tier": "all",
-  "cacheUpdated": "2025-12-26T12:30:00.000Z"
+  "version": "5.0",
+  "enhanced": true
 }
 ```
 
@@ -285,66 +342,30 @@ GET https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec?name=Sick&days=7
 
 ---
 
-## 🆘 Support & Maintenance
-
-### Diagnostic Functions
-
-| Function | Purpose |
-|----------|---------|
-| `runAllDiagnostics()` | Complete system health check |
-| `checkTriggerExecutionStatus()` | Verify triggers are running |
-| `checkAvailableSheets()` | See what sheets exist |
-| `checkCacheDateFormats()` | Inspect cache data |
-| `testFindNextSheet()` | Test smart sheet finder |
-| `testSmartSheetRange()` | Test range finding |
-
-### Common Issues
-
-**Problem:** "Failed to fetch" error
-**Solution:** Check API URL in localStorage, clear cache
-
-**Problem:** Cache is stale (2+ hours old)
-**Solution:** Verify triggers are running, check execution logs
-
-**Problem:** Events showing on wrong dates
-**Solution:** Check timezone in Config.gs, run `checkCacheDateFormats()`
-
----
-
 ## 📝 Change Log
+
+### Version 6.3 (December 26, 2025)
+- ✨ **Academics Feature** - Show class times for Alpha/Bravo students
+- ✨ **Grouped Events Feature** - Show ALL and STAFF ONLY events
+- 🔧 **Structure-Aware Parsing** - Correctly extract grouped events from all sections
+- 🎨 **Frontend Display** - Added rendering for academics and grouped events
+- 📚 **Archived Old Files** - Moved TPS-Schedule-OPTIMIZED.gs, TPS-Schedule-SIMPLIFIED.gs, DiagnosticChecks.gs to archive/
+- 🧹 **Cleaned Documentation** - Updated README and archived outdated docs
 
 ### Version 6.2 (December 26, 2025)
 - 🔧 **Simplified trigger system** - Removed tiered processing, single trigger only
 - 🗑️ **Removed legacy functions** - Cleaned up `batchProcessRecent()` and `batchProcessUpcoming()`
 - 📚 **Updated documentation** - Clarified quota usage and trigger configuration
-- ✅ **Eliminated redundancy** - Fixed issue where both triggers ran same process
 
 ### Version 6.1 (December 26, 2025)
 - ✨ Added overnight hours optimization (8 PM - 5 AM Pacific skip)
-- ✨ Implemented hidden manual refresh (triple-tap header, re-fetches from cache)
+- ✨ Implemented force refresh (triple-tap header triggers batch processing)
 - ⚡ Reduced quota usage by 36% with overnight skip
-- 🎨 Updated status bar to "Data Updated: MM/DD/YY H:MM AM/PM" format
-- 🎨 Added "Next update: 5:00 AM" indicator during overnight hours
-- 📚 Updated documentation with quota calculations and hidden features
 
 ### Version 6.0 (December 26, 2025)
 - ✨ Implemented smart sheet finding logic
 - ✨ Removed test date functionality (always live dates)
 - ✨ Simplified batch processing (single 15-min trigger)
-- ✨ Added comprehensive diagnostic tools
-- 🐛 Fixed date display offset bug
-- 🎨 Added first-time setup modal
-- 📚 Reorganized project structure
-- 📚 Updated all documentation
-
-### Version 5.0 (December 24, 2025)
-- ✨ Implemented tiered batch processing
-- ✨ Added cache metadata display in UI
-- ⚡ Achieved 600x performance improvement
-
-### Version 4.0 (December 2025)
-- ✨ Simplified version with no caching
-- ⚡ 2.5x faster than original
 
 ---
 
@@ -357,7 +378,7 @@ This project is provided as-is for use within the organization. Modify and deplo
 ## 🤝 Contributing
 
 To make changes:
-1. Test thoroughly with diagnostic functions
+1. Test thoroughly with test functions
 2. Update documentation
 3. Maintain backwards compatibility where possible
 4. Archive obsolete files to `archive/` folder
@@ -368,8 +389,9 @@ To make changes:
 
 For issues or questions:
 1. Check [DEPLOYMENT.md](DEPLOYMENT.md) for setup help
-2. Run `runAllDiagnostics()` and review output
+2. Run test functions and review output
 3. Check execution logs in Apps Script
+4. Use `viewAllCachedData()` to inspect cache
 
 ---
 
