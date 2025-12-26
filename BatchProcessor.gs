@@ -62,7 +62,7 @@ function batchProcessAllSchedules() {
     }
 
     // 3. Process each sheet
-    const cache = CacheService.getScriptCache();
+    // (cache already declared above for cleanup)
     const allSchedules = {}; // personName -> { events: [], days: [] }
 
     sheets.forEach(sheetInfo => {
