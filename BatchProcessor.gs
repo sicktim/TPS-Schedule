@@ -315,13 +315,30 @@ function getAllPeople() {
       data.forEach((row, idx) => {
         const name = row[colDef.col] ? row[colDef.col].trim() : '';
 
-        // Skip if empty, just a dot, or a header
+        // Skip if empty, just a dot, or blank
         if (!name || name === '.' || name === '') {
           return;
         }
 
-        // Skip if it's a header row
+        // Skip boolean values and common non-names
         const nameLower = name.toLowerCase();
+        if (nameLower === 'false' || nameLower === 'true' ||
+            nameLower === 'yes' || nameLower === 'no' ||
+            nameLower === 'n/a' || nameLower === 'tbd') {
+          return;
+        }
+
+        // Skip if it's too short to be a name (likely a typo or placeholder)
+        if (name.length < 2) {
+          return;
+        }
+
+        // Skip if it's just numbers
+        if (/^\d+$/.test(name)) {
+          return;
+        }
+
+        // Skip if it's a header row
         if (headerPatterns.some(pattern => nameLower.includes(pattern))) {
           return;
         }
