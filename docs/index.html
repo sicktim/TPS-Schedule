@@ -88,8 +88,12 @@
             webAppUrl: 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec',
             version: 'enhanced',
             testMode: false,
-            testDate: '2026-01-05'
+            testDate: '2026-01-05',
+            configVersion: 2  // Increment to force migration
         };
+
+        // Correct API URL (with batch processing cache)
+        const CORRECT_API_URL = 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec';
 
         // Load config from localStorage
         const loadConfig = () => {
@@ -97,6 +101,24 @@
                 const saved = localStorage.getItem('scheduleWidgetConfig');
                 if (saved) {
                     const parsed = JSON.parse(saved);
+
+                    // Auto-migrate: Force correct API URL if using old deployment
+                    if (!parsed.configVersion || parsed.configVersion < 2) {
+                        console.log('🔄 Migrating to new API URL with batch cache...');
+                        parsed.webAppUrl = CORRECT_API_URL;
+                        parsed.configVersion = 2;
+
+                        // Save migrated config
+                        localStorage.setItem('scheduleWidgetConfig', JSON.stringify(parsed));
+                    }
+
+                    // Always ensure webAppUrl matches correct deployment
+                    if (parsed.webAppUrl !== CORRECT_API_URL) {
+                        console.log('🔧 Fixing API URL to use batch cache deployment...');
+                        parsed.webAppUrl = CORRECT_API_URL;
+                        localStorage.setItem('scheduleWidgetConfig', JSON.stringify(parsed));
+                    }
+
                     return { ...DEFAULT_CONFIG, ...parsed };
                 }
             } catch (e) {
