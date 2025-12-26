@@ -204,14 +204,20 @@ function getRelevantSheets(startDate) {
     targetDate.setDate(today.getDate() + i);
 
     const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][targetDate.getDay()];
+    const dayNameShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][targetDate.getDay()];
     const monthName = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][targetDate.getMonth()];
     const day = targetDate.getDate();
 
-    // Try both "Monday, 15 Dec" and "Monday Dec 15" formats
-    const sheetName1 = `${dayName}, ${day} ${monthName}`;
-    const sheetName2 = `${dayName} ${monthName} ${day}`;
+    // Try multiple sheet name formats
+    const sheetName1 = `${dayNameShort} ${day} ${monthName}`;  // "Mon 15 Dec" (most common)
+    const sheetName2 = `${dayName}, ${day} ${monthName}`;      // "Monday, 15 Dec"
+    const sheetName3 = `${dayName} ${monthName} ${day}`;       // "Monday Dec 15"
+    const sheetName4 = `${dayName} ${day} ${monthName}`;       // "Monday 15 Dec"
 
-    let sheet = ss.getSheetByName(sheetName1) || ss.getSheetByName(sheetName2);
+    let sheet = ss.getSheetByName(sheetName1) ||
+                ss.getSheetByName(sheetName2) ||
+                ss.getSheetByName(sheetName3) ||
+                ss.getSheetByName(sheetName4);
 
     if (sheet) {
       sheets.push({
@@ -221,7 +227,7 @@ function getRelevantSheets(startDate) {
         sheet: sheet
       });
     } else {
-      console.warn(`Sheet not found for ${dayName}, ${day} ${monthName}`);
+      console.warn(`Sheet not found. Tried: "${sheetName1}", "${sheetName2}", "${sheetName3}", "${sheetName4}"`);
     }
   }
 
