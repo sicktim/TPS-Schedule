@@ -13,7 +13,7 @@
 // TRIGGER CONFIGURATION
 // ======================
 
-const TRIGGER_CONFIG = {
+var TRIGGER_CONFIG = {
   functionName: 'batchProcessSchedule',
   intervalMinutes: 15,  // Valid: 1, 5, 10, 15, 30
   description: 'Process all 7 days of schedules (skips overnight hours 8 PM - 5 AM)'

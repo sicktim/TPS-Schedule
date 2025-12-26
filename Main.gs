@@ -63,6 +63,10 @@ const ALLOW_VERSION_OVERRIDE = true;
  *   Basic request (uses ACTIVE_VERSION):
  *     ?name=Sick&days=4
  *
+ *   Force cache refresh (triggers batch processing):
+ *     ?forceRefresh=true
+ *     ?refresh=true
+ *
  *   Override version via URL parameter (if ALLOW_VERSION_OVERRIDE = true):
  *     ?name=Sick&days=4&version=optimized
  *     ?name=Sick&days=4&version=simplified
@@ -79,6 +83,57 @@ const ALLOW_VERSION_OVERRIDE = true;
 function doGet(e) {
   try {
     const searchName = e.parameter.name || SEARCH_CONFIG.searchTerm;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FORCE REFRESH (Trigger Batch Processing)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Hidden feature: ?forceRefresh=true triggers batch processing immediately
+    // Useful for triple-tap refresh or manual cache updates
+    // ═══════════════════════════════════════════════════════════════════════
+
+    if (e.parameter.forceRefresh === 'true' || e.parameter.refresh === 'true') {
+      console.log('🔄 FORCE REFRESH requested - triggering batch process');
+
+      try {
+        const result = batchProcessSchedule();
+
+        // If skipped due to overnight hours or already running
+        if (result && result.skipped) {
+          return ContentService
+            .createTextOutput(JSON.stringify({
+              forceRefresh: true,
+              status: 'skipped',
+              reason: result.reason,
+              time: result.time,
+              message: 'Batch process skipped (overnight hours or already running)'
+            }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+
+        // Batch process completed successfully
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            forceRefresh: true,
+            status: 'success',
+            message: 'Batch process completed - cache refreshed',
+            duration: result ? result.totalDuration : null,
+            peopleProcessed: result ? result.peopleProcessed : null,
+            eventsFound: result ? result.eventsFound : null
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+
+      } catch (error) {
+        console.error('❌ Force refresh error:', error);
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            forceRefresh: true,
+            status: 'error',
+            message: error.toString(),
+            hint: 'Check if batchProcessSchedule() function exists'
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
 
     // ═══════════════════════════════════════════════════════════════════════
     // INSTANT CACHE RETRIEVAL (Batch Processing System)

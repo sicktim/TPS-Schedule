@@ -636,7 +636,7 @@
                 setPullStart(0);
             };
 
-            // Hidden feature: Triple-tap header to force manual refresh
+            // Hidden feature: Triple-tap header to force batch refresh
             const handleHeaderTap = () => {
                 const newCount = tapCount + 1;
                 setTapCount(newCount);
@@ -648,14 +648,36 @@
 
                 // Check if triple-tap detected
                 if (newCount >= 3) {
-                    console.log('🔄 Triple-tap detected - forcing manual refresh');
+                    console.log('🔄 Triple-tap detected - triggering batch refresh');
                     setIsManualRefreshing(true);
                     setTapCount(0);
 
-                    // Force a fresh fetch
-                    fetchSchedule(config.searchName).then(() => {
-                        setTimeout(() => setIsManualRefreshing(false), 1000);
-                    });
+                    // Force batch processing via API
+                    const forceRefreshUrl = `${config.webAppUrl}?forceRefresh=true`;
+
+                    fetch(forceRefreshUrl)
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log('Batch refresh response:', data);
+
+                            // Show user feedback
+                            if (data.status === 'success') {
+                                console.log(`✅ Cache refreshed! Processed ${data.peopleProcessed} people in ${data.duration}s`);
+                            } else if (data.status === 'skipped') {
+                                console.log(`⏸️ Batch process skipped: ${data.message}`);
+                            }
+
+                            // Now fetch the updated schedule
+                            return fetchSchedule(config.searchName);
+                        })
+                        .catch(error => {
+                            console.error('Force refresh error:', error);
+                            // Fall back to normal refresh
+                            return fetchSchedule(config.searchName);
+                        })
+                        .finally(() => {
+                            setTimeout(() => setIsManualRefreshing(false), 1000);
+                        });
                 } else {
                     // Reset tap count after 500ms
                     tapTimerRef.current = setTimeout(() => {
