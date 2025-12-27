@@ -86,10 +86,8 @@
             searchName: '',  // Empty - will prompt on first use
             webAppUrl: 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec',
             version: 'enhanced',
-            configVersion: 4,  // Increment to force migration (added academics + grouped events)
-            firstTimeSetupDone: false,  // Track if first-time setup completed
-            showAcademics: false,  // Show academic schedule for students (Alpha/Bravo/STC)
-            showGroupedEvents: false  // Show ALL and STAFF ONLY events
+            configVersion: 3,  // Increment to force migration (removed test mode)
+            firstTimeSetupDone: false  // Track if first-time setup completed
         };
 
         // Correct API URL (with batch processing cache)
@@ -115,14 +113,6 @@
                         delete parsed.testMode;
                         delete parsed.testDate;
                         parsed.configVersion = 3;
-                    }
-
-                    // Auto-migrate: Add academics and grouped events (config version 4)
-                    if (parsed.configVersion < 4) {
-                        console.log('🔄 Adding academics and grouped events settings...');
-                        parsed.showAcademics = false;
-                        parsed.showGroupedEvents = false;
-                        parsed.configVersion = 4;
                     }
 
                     // Always ensure webAppUrl matches correct deployment
@@ -174,15 +164,6 @@
                 } else if (section === 'Supervision') {
                     type = 'Supervision';
                     colorClass = 'event-supervision';
-                    badgeClass = 'badge-supervision';
-                } else if (section === 'Academics') {
-                    type = 'Academics';
-                    colorClass = 'event-ground';  // Use ground styling (green)
-                    badgeClass = 'badge-ground';
-                } else if (enh.groupType) {
-                    // Grouped events (ALL, STAFF ONLY, etc.)
-                    type = enh.groupType;
-                    colorClass = 'event-supervision';  // Use supervision styling (purple)
                     badgeClass = 'badge-supervision';
                 } else {
                     type = 'Other';
@@ -342,14 +323,8 @@
                         return parsed.enhanced.duty;
                     case 'NA':
                         return parsed.enhanced.reason;
-                    case 'Academics':
-                        return `${parsed.enhanced.type} Class`;  // "Alpha Class" or "Bravo Class"
                     default:
-                        // Grouped events or other types
-                        if (parsed.enhanced.groupType) {
-                            return parsed.enhanced.description || 'Group Event';
-                        }
-                        return parsed.parts ? parsed.parts[0] : '';
+                        return '';
                 }
             };
 
@@ -449,40 +424,6 @@
                                     )}
                                 </>
                             )}
-
-                            {/* Academics */}
-                            {parsed.enhanced.section === 'Academics' && (
-                                <>
-                                    <div className="text-gray-300">
-                                        {parsed.enhanced.type} Student Schedule
-                                    </div>
-                                    <div className="text-gray-400 text-xs">
-                                        {parsed.enhanced.start} - {parsed.enhanced.end}
-                                    </div>
-                                </>
-                            )}
-
-                            {/* Grouped Events (ALL, STAFF ONLY, etc.) */}
-                            {parsed.enhanced.groupType && (
-                                <>
-                                    <div className="text-gray-300">
-                                        {parsed.enhanced.groupType} Event
-                                    </div>
-                                    <div className="text-gray-400 text-xs">
-                                        Section: {parsed.enhanced.section}
-                                    </div>
-                                    {parsed.enhanced.description && (
-                                        <div className="text-gray-300 text-sm">
-                                            {parsed.enhanced.description}
-                                        </div>
-                                    )}
-                                    {parsed.enhanced.time && (
-                                        <div className="text-gray-400 text-xs">
-                                            {parsed.enhanced.time}
-                                        </div>
-                                    )}
-                                </>
-                            )}
                         </div>
                     ) : (
                         /* Legacy fallback */
@@ -539,14 +480,6 @@
                     // Add version parameter
                     if (config.version) {
                         url += `&version=${config.version}`;
-                    }
-
-                    // Add feature toggles
-                    if (config.showAcademics) {
-                        url += `&showAcademics=true`;
-                    }
-                    if (config.showGroupedEvents) {
-                        url += `&showGroupedEvents=true`;
                     }
 
                     // Add cache-busting timestamp
@@ -614,7 +547,7 @@
                         setLoading(false);
                     }
                 }
-            }, [config.webAppUrl, config.version, config.showAcademics, config.showGroupedEvents]);
+            }, [config.webAppUrl, config.version]);
 
             // Debounced fetch
             const debouncedFetch = useCallback((searchName) => {
@@ -740,13 +673,6 @@
                 };
             }, []);
 
-            // Re-fetch when academics or grouped events settings change
-            useEffect(() => {
-                if (config.searchName) {
-                    fetchSchedule(config.searchName);
-                }
-            }, [config.showAcademics, config.showGroupedEvents]);
-
             // Manual refresh
             const handleRefresh = () => {
                 if (debounceTimerRef.current) {
@@ -810,48 +736,6 @@
                                         placeholder="Enter name to search"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">Results update as you type</p>
-                                </div>
-
-                                {/* Show Academics Toggle */}
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <label className="block text-sm text-gray-300">Show Academics</label>
-                                        <p className="text-xs text-gray-500 mt-1">Display class times for Alpha/Bravo students</p>
-                                    </div>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={config.showAcademics}
-                                            onChange={(e) => {
-                                                const newConfig = { ...config, showAcademics: e.target.checked };
-                                                setConfig(newConfig);
-                                                saveConfig(newConfig);
-                                            }}
-                                            className="sr-only peer"
-                                        />
-                                        <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                                    </label>
-                                </div>
-
-                                {/* Show Grouped Events Toggle */}
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <label className="block text-sm text-gray-300">Show Grouped Events</label>
-                                        <p className="text-xs text-gray-500 mt-1">Display ALL and STAFF ONLY events</p>
-                                    </div>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={config.showGroupedEvents}
-                                            onChange={(e) => {
-                                                const newConfig = { ...config, showGroupedEvents: e.target.checked };
-                                                setConfig(newConfig);
-                                                saveConfig(newConfig);
-                                            }}
-                                            className="sr-only peer"
-                                        />
-                                        <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                                    </label>
                                 </div>
 
                                 <button
