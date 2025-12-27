@@ -577,6 +577,14 @@
                 fetchSchedule(config.searchName);
             };
 
+            // Handle clicking on name to change it
+            const handleNameClick = () => {
+                const newName = prompt('Enter your name:', config.searchName);
+                if (newName && newName.trim() !== '') {
+                    handleNameChange(newName.trim());
+                }
+            };
+
             return (
                 <div className="max-w-md mx-auto">
                     {/* Header */}
@@ -724,8 +732,8 @@
                             <span>
                                 Showing: <span
                                     className="text-blue-400 cursor-pointer hover:text-blue-300 underline decoration-dotted"
-                                    onClick={() => setShowSettings(true)}
-                                    title="Click to open settings"
+                                    onClick={handleNameClick}
+                                    title="Click to change name"
                                 >{config.searchName}</span>
                                 {config.testMode && <span className="ml-2 text-orange-400">(Test: {config.testDate})</span>}
                             </span>
