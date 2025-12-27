@@ -58,10 +58,8 @@ function doGet_Enhanced(e) {
     const searchName = e.parameter.name || SEARCH_CONFIG.searchTerm;
     const daysAhead = parseInt(e.parameter.days) || 3;
     const testDate = e.parameter.testDate || null;
-    const showAcademics = e.parameter.showAcademics === 'true';
-    const showGroupedEvents = e.parameter.showGroupedEvents === 'true';
 
-    const results = getEventsForWidget_Enhanced(searchName, daysAhead, testDate, showAcademics, showGroupedEvents);
+    const results = getEventsForWidget_Enhanced(searchName, daysAhead, testDate);
 
     return ContentService
       .createTextOutput(JSON.stringify(results))
@@ -93,52 +91,19 @@ function doGet_Enhanced(e) {
  * @param {string} testDate - Optional test date (YYYY-MM-DD)
  * @returns {Object} Enhanced response with detailed event metadata
  */
-function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null, showAcademics = false, showGroupedEvents = false) {
+function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null) {
   const upcomingDays = getNextNWeekdays(daysAhead, testDate);
   const spreadsheet = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
 
   const events = [];
   const searchedSheets = [];
-  let personType = null;  // Will store if person is Alpha/Bravo student, etc.
 
   console.log(`⚡ ENHANCED VERSION - Searching for: "${searchName}"`);
   console.log(`Days to search: ${upcomingDays.length}`);
-  console.log(`Show Academics: ${showAcademics}, Show Grouped Events: ${showGroupedEvents}`);
-
-  // Get person type once at the start (only needed if academics or grouped events are enabled)
-  if (showAcademics || showGroupedEvents) {
-    try {
-      // Get any available sheet to look up person type
-      const firstDay = upcomingDays[0];
-      const firstSheetName = generateSheetName(firstDay);
-      const firstSheet = spreadsheet.getSheetByName(firstSheetName);
-
-      if (firstSheet) {
-        personType = getPersonType(firstSheet, searchName);
-        console.log(`Person type determined: ${personType}`);
-      } else {
-        console.warn(`Could not find sheet ${firstSheetName} to determine person type`);
-      }
-    } catch (e) {
-      console.warn(`Error determining person type: ${e}`);
-    }
-  }
 
   upcomingDays.forEach(date => {
     const sheetName = generateSheetName(date);
     console.log(`Looking for sheet: "${sheetName}"`);
-
-    const sheet = spreadsheet.getSheetByName(sheetName);
-
-    if (!sheet) {
-      console.log(`Sheet not found: ${sheetName}`);
-      searchedSheets.push({
-        date: formatDateISO(date),
-        sheetName: sheetName,
-        eventsFound: 0
-      });
-      return;  // Skip this day
-    }
 
     // Parse all sections with enhanced detail
     const dayEvents = searchNameInSheet_Enhanced(
@@ -146,24 +111,6 @@ function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null, sho
       sheetName,
       searchName
     );
-
-    // Add academics if enabled and person is a student
-    if (showAcademics && personType) {
-      const academics = getAcademicsForStudent(personType, formatDateISO(date));
-      if (academics.length > 0) {
-        console.log(`Adding ${academics.length} academic events for ${personType}`);
-        dayEvents.push(...academics);
-      }
-    }
-
-    // Add grouped events if enabled
-    if (showGroupedEvents && personType) {
-      const groupedEvents = getGroupedEventsForPerson(sheet, personType, formatDateISO(date));
-      if (groupedEvents.length > 0) {
-        console.log(`Adding ${groupedEvents.length} grouped events for ${personType}`);
-        dayEvents.push(...groupedEvents);
-      }
-    }
 
     searchedSheets.push({
       date: formatDateISO(date),
@@ -297,7 +244,6 @@ function parseSupervisionSection(sheet, searchName) {
             ? `${dutyType} | ${poc}`
             : `${dutyType} | ${poc} | ${start}-${end}`,
           rangeSource: "Supervision",
-          eventCategory: 'normal',  // Flag for frontend filtering
 
           // Enhanced format
           enhanced: {
@@ -368,7 +314,6 @@ function parseFlyingEventsEnhanced(sheet, searchName) {
       time: briefStart,
       description: [model, event, ...crew].filter(x => x).join(" | "),
       rangeSource: "Flying Events",
-      eventCategory: 'normal',  // Flag for frontend filtering
 
       // Enhanced format
       enhanced: {
@@ -439,7 +384,6 @@ function parseGroundEventsEnhanced(sheet, searchName) {
       time: start,
       description: [event, ...people].filter(x => x).join(" | "),
       rangeSource: "Ground Events",
-      eventCategory: 'normal',  // Flag for frontend filtering
 
       // Enhanced format
       enhanced: {
@@ -498,7 +442,6 @@ function parseNAsEnhanced(sheet, searchName) {
       time: start,
       description: [reason, ...people].filter(x => x).join(" | "),
       rangeSource: "Not Available",
-      eventCategory: 'normal',  // Flag for frontend filtering
 
       // Enhanced format
       enhanced: {
@@ -514,67 +457,6 @@ function parseNAsEnhanced(sheet, searchName) {
   });
 
   return matches;
-}
-
-
-/**
- * getPersonType() - Find person's category from Student/Staff list (rows 120-169)
- *
- * Categories include: "Students (Alpha)", "Students (Bravo)", "Staff IP",
- * "Staff IFTE/ICSO", "STC Staff", "Attached/Support"
- *
- * @param {Sheet} sheet - Any sheet from the spreadsheet
- * @param {string} searchName - Name to search for
- * @returns {string|null} Person's category or null if not found
- */
-function getPersonType(sheet, searchName) {
-  try {
-    // Student/Staff list is in rows 120-169
-    const listRange = sheet.getRange('A120:Z169');
-    const listValues = listRange.getDisplayValues();
-
-    // Search for the person's name in this area
-    for (let rowIndex = 0; rowIndex < listValues.length; rowIndex++) {
-      const row = listValues[rowIndex];
-
-      // Check if any cell in this row contains the search name
-      for (let colIndex = 0; colIndex < row.length; colIndex++) {
-        const cell = row[colIndex];
-
-        if (cell && typeof cell === 'string' &&
-            cell.toLowerCase().includes(searchName.toLowerCase())) {
-
-          // Found the person! Now find their category
-          // Category is typically in the first column or a header above
-          // Look backwards in the same column to find category header
-          for (let headerRow = rowIndex; headerRow >= 0; headerRow--) {
-            const potentialCategory = listValues[headerRow][0]; // Column A
-
-            if (potentialCategory && (
-              potentialCategory.includes('Students') ||
-              potentialCategory.includes('Staff') ||
-              potentialCategory.includes('Attached') ||
-              potentialCategory.includes('STC')
-            )) {
-              console.log(`Found person type: ${potentialCategory} for ${searchName}`);
-              return potentialCategory;
-            }
-          }
-
-          // If we found the person but no category, return a generic indicator
-          console.log(`Found ${searchName} but couldn't determine category`);
-          return 'Unknown';
-        }
-      }
-    }
-
-    console.log(`Could not find ${searchName} in student/staff list`);
-    return null;
-
-  } catch (e) {
-    console.warn(`Error getting person type: ${e}`);
-    return null;
-  }
 }
 
 
@@ -692,385 +574,4 @@ function testEnhancedSections() {
   const nas = parseNAsEnhanced(sheet, "Kalampouk");
   console.log(`   Found ${nas.length} events`);
   nas.forEach(evt => console.log(`   - ${JSON.stringify(evt.enhanced)}`));
-}
-
-
-// ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                                                                            ║
-// ║                    ACADEMICS AND GROUPED EVENTS                            ║
-// ║                                                                            ║
-// ║  Academics: Show class times for Alpha/Bravo students                     ║
-// ║  Grouped Events: Show ALL and STAFF ONLY events for relevant people       ║
-// ║                                                                            ║
-// ╚════════════════════════════════════════════════════════════════════════════╝
-
-/**
- * Get academic schedule for a student based on their type
- * 
- * @param {string} personType - Type of student ("Students (Alpha)", "Students (Bravo)", etc.)
- * @param {string} date - ISO date string (YYYY-MM-DD)
- * @returns {Array} Array of academic event objects
- */
-function getAcademicsForStudent(personType, date) {
-  const academics = [];
-  
-  // Alpha students: 07:30-17:00
-  if (personType && personType.toLowerCase().includes('alpha')) {
-    academics.push({
-      date: date,
-      time: '0730-1700',
-      description: 'ACADEMICS | Alpha | 07:30-17:00',
-      eventCategory: 'academic',  // Flag for frontend filtering
-      enhanced: {
-        section: 'Academics',
-        type: 'Alpha',
-        start: '07:30',
-        end: '17:00',
-        status: 'Effective'
-      }
-    });
-  }
-  
-  // Bravo students: 07:00-07:30, 08:30-09:30, 15:00-17:00
-  if (personType && personType.toLowerCase().includes('bravo')) {
-    academics.push({
-      date: date,
-      time: '0700-0730',
-      description: 'ACADEMICS | Bravo | 07:00-07:30',
-      eventCategory: 'academic',  // Flag for frontend filtering
-      enhanced: {
-        section: 'Academics',
-        type: 'Bravo',
-        start: '07:00',
-        end: '07:30',
-        status: 'Effective'
-      }
-    });
-    academics.push({
-      date: date,
-      time: '0830-0930',
-      description: 'ACADEMICS | Bravo | 08:30-09:30',
-      eventCategory: 'academic',  // Flag for frontend filtering
-      enhanced: {
-        section: 'Academics',
-        type: 'Bravo',
-        start: '08:30',
-        end: '09:30',
-        status: 'Effective'
-      }
-    });
-    academics.push({
-      date: date,
-      time: '1500-1700',
-      description: 'ACADEMICS | Bravo | 15:00-17:00',
-      eventCategory: 'academic',  // Flag for frontend filtering
-      enhanced: {
-        section: 'Academics',
-        type: 'Bravo',
-        start: '15:00',
-        end: '17:00',
-        status: 'Effective'
-      }
-    });
-  }
-  
-  return academics;
-}
-
-/**
- * Check if a person should see grouped events based on their type
- * 
- * EXTENSIBILITY GUIDE:
- * To add new event categories, modify this function:
- * 1. Add a new case for the event type (e.g., "INSTRUCTORS ONLY")
- * 2. Add the person types that should see it
- * 3. The rest happens automatically
- * 
- * @param {string} eventType - Type of grouped event ("ALL", "STAFF ONLY", etc.)
- * @param {string} personType - Type of person ("Staff IP", "Students (Alpha)", etc.)
- * @returns {boolean} True if person should see this event
- */
-function shouldShowGroupedEvent(eventType, personType) {
-  if (!eventType || !personType) return false;
-  
-  const eventTypeUpper = eventType.toUpperCase();
-  const personTypeLower = personType.toLowerCase();
-  
-  // ALL events: show to everyone
-  if (eventTypeUpper === 'ALL') {
-    return true;
-  }
-  
-  // STAFF ONLY events: show to staff categories
-  if (eventTypeUpper === 'STAFF ONLY' || eventTypeUpper === 'STAFF_ONLY') {
-    return (
-      personTypeLower.includes('staff ip') ||
-      personTypeLower.includes('staff ifte/icso') ||
-      personTypeLower.includes('stc staff') ||
-      personTypeLower.includes('attached/support')
-    );
-  }
-  
-  // EXTENSIBILITY EXAMPLE:
-  // Add new categories here following this pattern:
-  //
-  // if (eventTypeUpper === 'INSTRUCTORS ONLY') {
-  //   return (
-  //     personTypeLower.includes('staff ip') ||
-  //     personTypeLower.includes('staff ifte/icso')
-  //   );
-  // }
-  //
-  // if (eventTypeUpper === 'STUDENTS ONLY') {
-  //   return (
-  //     personTypeLower.includes('students (alpha)') ||
-  //     personTypeLower.includes('students (bravo)')
-  //   );
-  // }
-  
-  return false;
-}
-
-/**
- * Find and process grouped events (ALL, STAFF ONLY, etc.) from a sheet
- *
- * Uses structure-aware parsing to correctly extract event details based on
- * the known column layout of each section.
- *
- * @param {Sheet} sheet - The schedule sheet
- * @param {string} personType - Type of person viewing the schedule
- * @param {string} date - ISO date string (YYYY-MM-DD)
- * @returns {Array} Array of grouped event objects
- */
-function getGroupedEventsForPerson(sheet, personType, date) {
-  const groupedEvents = [];
-
-  // Parse each section using structure-aware methods
-  groupedEvents.push(...parseGroundEventsForGroups(sheet, personType, date));
-  groupedEvents.push(...parseFlyingEventsForGroups(sheet, personType, date));
-  groupedEvents.push(...parseSupervisionForGroups(sheet, personType, date));
-
-  console.log(`Found ${groupedEvents.length} grouped events for ${personType}`);
-  return groupedEvents;
-}
-
-/**
- * Parse Ground Events section for grouped events (ALL, STAFF ONLY, etc.)
- *
- * Ground Events Structure (rows 54-80):
- *   Column A: Event Name
- *   Column B: Start Time
- *   Column C: End Time
- *   Column D+: People (this is where "ALL", "STAFF ONLY" appear)
- *   Last 3 cols: Status checkboxes
- */
-function parseGroundEventsForGroups(sheet, personType, date) {
-  const matches = [];
-  const values = sheet.getRange('A54:Q80').getDisplayValues();
-
-  values.forEach((row, rowIndex) => {
-    const event = row[0];  // A: Event name
-    const start = row[1];  // B: Start time
-    const end = row[2];    // C: End time
-
-    // Skip empty rows
-    if (!event && !start) return;
-
-    // People are in columns D onwards, stop before last 3 status columns
-    const peopleColumns = row.slice(3, -3);
-
-    // Check if any person column contains a group indicator
-    const hasGroupIndicator = peopleColumns.some(person => {
-      if (!person) return false;
-      const personUpper = person.toUpperCase();
-      return personUpper === 'ALL' || personUpper === 'STAFF ONLY' || personUpper === 'STAFF_ONLY';
-    });
-
-    if (!hasGroupIndicator) return;
-
-    // Find which group indicator(s) are present
-    peopleColumns.forEach(person => {
-      if (!person) return;
-      const personUpper = person.toUpperCase();
-
-      if (personUpper === 'ALL' || personUpper === 'STAFF ONLY' || personUpper === 'STAFF_ONLY') {
-        // Check if this person should see this grouped event
-        if (shouldShowGroupedEvent(person, personType)) {
-
-          // Status checkboxes in last 3 columns
-          const effective = parseBoolean(row[row.length - 3]);
-          const cancelled = parseBoolean(row[row.length - 2]);
-          const partiallyEffective = parseBoolean(row[row.length - 1]);
-
-          matches.push({
-            time: start,
-            description: `${event} | ${person}`,
-            eventCategory: 'grouped',  // Flag for frontend filtering
-            enhanced: {
-              section: 'Ground Events',
-              event: event,
-              start: start,
-              end: end,
-              groupType: person,
-              status: {
-                effective: effective,
-                cancelled: cancelled,
-                partiallyEffective: partiallyEffective
-              }
-            }
-          });
-
-          console.log(`✓ Grouped Ground Event: ${event} for ${person}`);
-        }
-      }
-    });
-  });
-
-  return matches;
-}
-
-/**
- * Parse Flying Events section for grouped events (ALL, STAFF ONLY, etc.)
- *
- * Flying Events Structure (rows 11-52):
- *   Column A: Model
- *   Column B: Brief Start
- *   Column C: ETD
- *   Column D: ETA
- *   Column E: Debrief End
- *   Column F: Event
- *   Column G+: Crew (this is where "ALL", "STAFF ONLY" appear)
- *   Last 3 cols: Status checkboxes
- */
-function parseFlyingEventsForGroups(sheet, personType, date) {
-  const matches = [];
-  const values = sheet.getRange('A11:R52').getDisplayValues();
-
-  values.forEach((row, rowIndex) => {
-    const model = row[0];       // A: Model
-    const briefStart = row[1];  // B: Brief Start
-    const etd = row[2];         // C: ETD
-    const eta = row[3];         // D: ETA
-    const debriefEnd = row[4];  // E: Debrief End
-    const event = row[5];       // F: Event
-
-    // Skip empty rows
-    if (!model && !event) return;
-
-    // Crew columns: G onwards, stop before last 3 status columns
-    const crewColumns = row.slice(6, -3);
-
-    // Check if any crew column contains a group indicator
-    const hasGroupIndicator = crewColumns.some(crew => {
-      if (!crew) return false;
-      const crewUpper = crew.toUpperCase();
-      return crewUpper === 'ALL' || crewUpper === 'STAFF ONLY' || crewUpper === 'STAFF_ONLY';
-    });
-
-    if (!hasGroupIndicator) return;
-
-    // Find which group indicator(s) are present
-    crewColumns.forEach(crew => {
-      if (!crew) return;
-      const crewUpper = crew.toUpperCase();
-
-      if (crewUpper === 'ALL' || crewUpper === 'STAFF ONLY' || crewUpper === 'STAFF_ONLY') {
-        // Check if this person should see this grouped event
-        if (shouldShowGroupedEvent(crew, personType)) {
-
-          // Status checkboxes in last 3 columns
-          const effective = parseBoolean(row[row.length - 3]);
-          const cancelled = parseBoolean(row[row.length - 2]);
-          const partiallyEffective = parseBoolean(row[row.length - 1]);
-
-          matches.push({
-            time: briefStart,
-            description: `${model} | ${event} | ${crew}`,
-            eventCategory: 'grouped',  // Flag for frontend filtering
-            enhanced: {
-              section: 'Flying Events',
-              model: model,
-              briefStart: briefStart,
-              etd: etd,
-              eta: eta,
-              debriefEnd: debriefEnd,
-              event: event,
-              groupType: crew,
-              status: {
-                effective: effective,
-                cancelled: cancelled,
-                partiallyEffective: partiallyEffective
-              }
-            }
-          });
-
-          console.log(`✓ Grouped Flying Event: ${model} ${event} for ${crew}`);
-        }
-      }
-    });
-  });
-
-  return matches;
-}
-
-/**
- * Parse Supervision section for grouped events (ALL, STAFF ONLY, etc.)
- *
- * Supervision Structure (rows 1-9):
- *   Column A: Duty Type (SOF, OS, ODO, etc.)
- *   Columns B+: Time slots (POC, Start, End) repeating
- */
-function parseSupervisionForGroups(sheet, personType, date) {
-  const matches = [];
-  const values = sheet.getRange('A1:N9').getDisplayValues();
-
-  values.forEach((row, rowIndex) => {
-    const dutyType = row[0]; // Column A: SOF, OS, ODO, etc.
-    if (!dutyType || dutyType === '' || dutyType === 'Supervision') return;
-
-    // Parse time slots (groups of 3 columns: POC, Start, End)
-    for (let col = 1; col < row.length - 2; col += 3) {
-      const poc = row[col];
-      const start = row[col + 1];
-      const end = row[col + 2];
-
-      // Skip empty slots
-      if (!poc && !start && !end) continue;
-
-      // Check if POC contains a group indicator
-      if (poc) {
-        const pocUpper = poc.toUpperCase();
-
-        if (pocUpper === 'ALL' || pocUpper === 'STAFF ONLY' || pocUpper === 'STAFF_ONLY') {
-          // Check if this person should see this grouped event
-          if (shouldShowGroupedEvent(poc, personType)) {
-
-            // Special handling for AUTH (no times)
-            const isAuth = dutyType.toUpperCase().includes('AUTH');
-
-            matches.push({
-              time: isAuth ? '' : start,
-              description: isAuth
-                ? `${dutyType} | ${poc}`
-                : `${dutyType} | ${poc} | ${start}-${end}`,
-              eventCategory: 'grouped',  // Flag for frontend filtering
-              enhanced: {
-                section: 'Supervision',
-                duty: dutyType,
-                poc: poc,
-                start: isAuth ? null : start,
-                end: isAuth ? null : end,
-                isAuth: isAuth,
-                groupType: poc
-              }
-            });
-
-            console.log(`✓ Grouped Supervision: ${dutyType} for ${poc}`);
-          }
-        }
-      }
-    }
-  });
-
-  return matches;
 }
