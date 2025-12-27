@@ -1009,19 +1009,30 @@
 
                                     {/* Events for this day */}
                                     <div className="space-y-2">
-                                        {day.events.map((event, eventIndex) => {
-                                            const eventId = `${day.date}-${eventIndex}`;
-                                            return (
-                                                <EventCard
-                                                    key={eventId}
-                                                    event={event}
-                                                    dayDate={day.date}
-                                                    eventId={eventId}
-                                                    isExpanded={expandedEvents.has(eventId)}
-                                                    onToggle={() => toggleEventExpansion(eventId)}
-                                                />
-                                            );
-                                        })}
+                                        {day.events
+                                            .filter(event => {
+                                                // Filter based on event category and user settings
+                                                if (event.eventCategory === 'academic' && !config.showAcademics) {
+                                                    return false;  // Hide academics if toggle is off
+                                                }
+                                                if (event.eventCategory === 'grouped' && !config.showGroupedEvents) {
+                                                    return false;  // Hide grouped events if toggle is off
+                                                }
+                                                return true;  // Show normal events and enabled special events
+                                            })
+                                            .map((event, eventIndex) => {
+                                                const eventId = `${day.date}-${eventIndex}`;
+                                                return (
+                                                    <EventCard
+                                                        key={eventId}
+                                                        event={event}
+                                                        dayDate={day.date}
+                                                        eventId={eventId}
+                                                        isExpanded={expandedEvents.has(eventId)}
+                                                        onToggle={() => toggleEventExpansion(eventId)}
+                                                    />
+                                                );
+                                            })}
                                     </div>
                                 </div>
                             ))}

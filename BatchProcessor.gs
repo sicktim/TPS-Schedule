@@ -883,6 +883,7 @@ function parseSupervisionForPerson(searchName, supervisionData, date) {
           type: 'Supervision',
           description: isAuth ? `${dutyType} | ${poc}` : `${dutyType} | ${poc} | ${start}-${end}`,
           rangeSource: 'Supervision',
+          eventCategory: 'normal',  // Flag for frontend filtering
           enhanced: {
             section: 'Supervision',
             duty: dutyType,
@@ -930,6 +931,7 @@ function parseFlyingForPerson(searchName, flyingData, date) {
       type: 'Flying Events',
       description: [model, event, ...crew].filter(x => x).join(' | '),
       rangeSource: 'Flying Events',
+      eventCategory: 'normal',  // Flag for frontend filtering
       enhanced: {
         section: 'Flying Events',
         model: model,
@@ -976,6 +978,7 @@ function parseGroundForPerson(searchName, groundData, date) {
       type: 'Ground Events',
       description: [event, ...people].filter(x => x).join(' | '),
       rangeSource: 'Ground Events',
+      eventCategory: 'normal',  // Flag for frontend filtering
       enhanced: {
         section: 'Ground Events',
         event: event,
@@ -1013,6 +1016,7 @@ function parseNAForPerson(searchName, naData, date) {
       type: 'NA',
       description: [reason, ...people].filter(x => x).join(' | '),
       rangeSource: 'NA',
+      eventCategory: 'normal',  // Flag for frontend filtering
       enhanced: {
         section: 'NA',
         reason: reason,
@@ -1099,6 +1103,7 @@ function getAcademicsForStudent_Batch(personType, date) {
       date: date,
       time: '0730-1700',
       description: 'ACADEMICS | Alpha | 07:30-17:00',
+      eventCategory: 'academic',  // Flag for frontend filtering
       enhanced: {
         section: 'Academics',
         type: 'Alpha',
@@ -1115,6 +1120,7 @@ function getAcademicsForStudent_Batch(personType, date) {
       date: date,
       time: '0700-0730',
       description: 'ACADEMICS | Bravo | 07:00-07:30',
+      eventCategory: 'academic',  // Flag for frontend filtering
       enhanced: {
         section: 'Academics',
         type: 'Bravo',
@@ -1127,6 +1133,7 @@ function getAcademicsForStudent_Batch(personType, date) {
       date: date,
       time: '0830-0930',
       description: 'ACADEMICS | Bravo | 08:30-09:30',
+      eventCategory: 'academic',  // Flag for frontend filtering
       enhanced: {
         section: 'Academics',
         type: 'Bravo',
@@ -1139,6 +1146,7 @@ function getAcademicsForStudent_Batch(personType, date) {
       date: date,
       time: '1500-1700',
       description: 'ACADEMICS | Bravo | 15:00-17:00',
+      eventCategory: 'academic',  // Flag for frontend filtering
       enhanced: {
         section: 'Academics',
         type: 'Bravo',
@@ -1199,6 +1207,7 @@ function parseGroundEventsForGroups_Batch(groundData, personType, date) {
             type: 'Ground Events',
             description: `${event} | ${person}`,
             rangeSource: 'Ground Events',
+            eventCategory: 'grouped',  // Flag for frontend filtering
             enhanced: {
               section: 'Ground Events',
               event: event,
@@ -1251,6 +1260,7 @@ function parseFlyingEventsForGroups_Batch(flyingData, personType, date) {
             type: 'Flying Events',
             description: `${model} | ${event} | ${crew}`,
             rangeSource: 'Flying Events',
+            eventCategory: 'grouped',  // Flag for frontend filtering
             enhanced: {
               section: 'Flying Events',
               model: model,
@@ -1306,6 +1316,7 @@ function parseSupervisionForGroups_Batch(supervisionData, personType, date) {
               type: 'Supervision',
               description: isAuth ? `${dutyType} | ${poc}` : `${dutyType} | ${poc} | ${start}-${end}`,
               rangeSource: 'Supervision',
+              eventCategory: 'grouped',  // Flag for frontend filtering
               enhanced: {
                 section: 'Supervision',
                 duty: dutyType,
