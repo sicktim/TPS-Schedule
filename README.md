@@ -20,10 +20,9 @@ A mobile-friendly web application for viewing military/aviation squadron schedul
 
 ### Advanced Features
 - 👥 **Role-Based Visibility**: Events can be shown to specific user roles
-  - **ALL Events**: Visible to everyone (toggleable)
+  - **ALL Events**: Visible to everyone
   - **STAFF ONLY Events**: Only visible to staff personnel
   - **Personal Events**: Only visible to named individuals
-  - **Student Academics**: Toggleable filter for all academics events
 - 🎭 **User Roles**: Support for different personnel categories
   - Regular Personnel
   - Staff IP
@@ -34,12 +33,10 @@ A mobile-friendly web application for viewing military/aviation squadron schedul
   - Search name
   - Days ahead (1-7 days)
   - User role/category
-  - Show/hide group events (ALL)
-  - Show/hide student academics
+  - Show/hide group events
   - Test mode for date simulation
 - 📊 **Event Status**: Visual indicators for cancelled and partially effective events
 - 🔍 **Event Filtering**: Smart filtering based on user role and preferences
-- 🖱️ **Quick Settings Access**: Click your name in the status bar to open settings
 
 ## Tech Stack
 
@@ -79,23 +76,15 @@ A mobile-friendly web application for viewing military/aviation squadron schedul
 
 ### Understanding Event Badges
 
-**Event Types:**
 - **Green badge**: Flying Event
 - **Orange badge**: Ground Event
 - **Red badge**: N/A (Non-Availability)
 - **Purple badge**: Supervision
 - **Blue badge**: Other
-
-**Visibility & Category Badges:**
-- **Indigo "ACADEMICS" badge**: Student academics event (toggleable)
-- **Cyan "ALL" badge**: Event visible to everyone (toggleable)
+- **Cyan "ALL" badge**: Event visible to everyone
 - **Purple "STAFF ONLY" badge**: Event only visible to staff
-
-**Status Badges:**
 - **Red "CANCELLED" badge**: Event is cancelled
 - **Orange "PARTIAL" badge**: Event is partially effective
-
-Events can have multiple badges (e.g., a group academics event will show both ACADEMICS and ALL badges).
 
 ### Role-Based Visibility
 
@@ -151,8 +140,7 @@ See [ROLE_BASED_EVENTS.md](./ROLE_BASED_EVENTS.md) for detailed setup instructio
   testMode: false,
   testDate: '2025-12-15',
   userRole: 'Regular Personnel',
-  showGroupEvents: true,
-  showAcademics: true
+  showGroupEvents: true
 }
 ```
 
@@ -282,16 +270,6 @@ MIT License - See repository for details
 For issues, questions, or feature requests, please open an issue on GitHub.
 
 ## Changelog
-
-### Version 2.1 (2025-12-27)
-- ✨ Added Student Academics filtering toggle
-- ✨ Added ACADEMICS badge for academics events
-- 🐛 Fixed toggle functionality - ALL and ACADEMICS now properly filter
-- 🎨 Made user name clickable to open settings
-- 🎨 Enhanced status bar to show when academics are hidden
-- 📚 Updated documentation with academics filtering
-- 🔧 Improved event filtering logic
-- ⚡ Performance notes added for cache size considerations
 
 ### Version 2.0 (2025-12-26)
 - ✨ Added role-based event visibility

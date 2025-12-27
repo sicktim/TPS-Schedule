@@ -90,8 +90,7 @@
             testMode: false,
             testDate: '2025-12-15',
             userRole: 'Regular Personnel', // User's role/category for event filtering
-            showGroupEvents: true, // Show events marked for "ALL"
-            showAcademics: true // Show student academics events
+            showGroupEvents: true // Show events marked for "ALL"
         };
 
         // Available user roles for role-based event visibility
@@ -215,14 +214,10 @@
         // Determine event visibility type and who should see it
         const getEventVisibility = (event) => {
             if (!event.enhanced) {
-                return { type: 'personal', visibleToRoles: [], isAcademics: false };
+                return { type: 'personal', visibleToRoles: [] };
             }
 
             const people = event.enhanced.people || [];
-            const eventName = (event.enhanced.event || '').toUpperCase();
-
-            // Check if event is academics (contains "ACADEM" in event name)
-            const isAcademics = eventName.includes('ACADEM');
 
             // Check if event is marked for ALL
             const hasAll = people.some(p =>
@@ -230,7 +225,7 @@
             );
 
             if (hasAll) {
-                return { type: 'all', visibleToRoles: ['all'], isAcademics };
+                return { type: 'all', visibleToRoles: ['all'] };
             }
 
             // Check if event is marked as STAFF ONLY
@@ -239,21 +234,16 @@
             );
 
             if (hasStaffOnly) {
-                return { type: 'staff-only', visibleToRoles: STAFF_ROLES, isAcademics };
+                return { type: 'staff-only', visibleToRoles: STAFF_ROLES };
             }
 
             // Personal event - only for named individuals
-            return { type: 'personal', visibleToRoles: [], isAcademics };
+            return { type: 'personal', visibleToRoles: [] };
         };
 
         // Check if user should see this event based on their role
-        const shouldShowEvent = (event, userRole, searchName, showGroupEvents, showAcademics) => {
+        const shouldShowEvent = (event, userRole, searchName, showGroupEvents) => {
             const visibility = getEventVisibility(event);
-
-            // Filter out academics if user has them disabled
-            if (visibility.isAcademics && !showAcademics) {
-                return false;
-            }
 
             // ALL events - show if user has group events enabled
             if (visibility.type === 'all') {
@@ -341,11 +331,6 @@
                         <span className={`text-xs px-2 py-0.5 rounded ${parsed.badgeClass} text-white`}>
                             {parsed.type}
                         </span>
-                        {visibility.isAcademics && (
-                            <span className="text-xs px-2 py-0.5 rounded bg-indigo-600 text-white">
-                                ACADEMICS
-                            </span>
-                        )}
                         {visibility.type === 'all' && (
                             <span className="text-xs px-2 py-0.5 rounded bg-cyan-600 text-white">
                                 ALL
@@ -518,7 +503,7 @@
                         const filteredEvents = sortedEvents.map(day => ({
                             ...day,
                             events: day.events.filter(event =>
-                                shouldShowEvent(event, config.userRole, config.searchName, config.showGroupEvents, config.showAcademics)
+                                shouldShowEvent(event, config.userRole, config.searchName, config.showGroupEvents)
                             )
                         })).filter(day => day.events.length > 0); // Remove days with no events
 
@@ -537,7 +522,7 @@
                         setLoading(false);
                     }
                 }
-            }, [config.webAppUrl, config.daysAhead, config.version, config.testMode, config.testDate, config.userRole, config.showGroupEvents, config.showAcademics]);
+            }, [config.webAppUrl, config.daysAhead, config.version, config.testMode, config.testDate, config.userRole, config.showGroupEvents]);
 
             // Debounced fetch
             const debouncedFetch = useCallback((searchName) => {
@@ -696,22 +681,6 @@
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input
                                             type="checkbox"
-                                            checked={config.showAcademics}
-                                            onChange={(e) => {
-                                                const newConfig = { ...config, showAcademics: e.target.checked };
-                                                setConfig(newConfig);
-                                            }}
-                                            className="w-4 h-4 rounded"
-                                        />
-                                        <span className="text-sm text-gray-400">Show student academics</span>
-                                    </label>
-                                    <p className="text-xs text-gray-500 mt-1 ml-6">Display all academics-related events</p>
-                                </div>
-
-                                <div>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input
-                                            type="checkbox"
                                             checked={config.testMode}
                                             onChange={(e) => {
                                                 const newConfig = { ...config, testMode: e.target.checked };
@@ -768,9 +737,6 @@
                             <span>Role: <span className="text-purple-400">{config.userRole}</span></span>
                             {!config.showGroupEvents && (
                                 <span className="text-yellow-400">• Group events hidden</span>
-                            )}
-                            {!config.showAcademics && (
-                                <span className="text-yellow-400">• Academics hidden</span>
                             )}
                         </div>
                     </div>
