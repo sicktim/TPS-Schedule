@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TPS Schedule</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1a1a2e">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+        * {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+            min-height: 100vh;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .event-flying { border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.1); }
+        .event-ground { border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.1); }
+        .event-na { border-left: 3px solid #ef4444; background: rgba(239, 68, 68, 0.1); }
+        .event-supervision { border-left: 3px solid #8b5cf6; background: rgba(139, 92, 246, 0.1); }
+        .event-other { border-left: 3px solid #3b82f6; background: rgba(59, 130, 246, 0.1); }
+
+        .badge-flying { background: #10b981; }
+        .badge-ground { background: #f59e0b; }
+        .badge-na { background: #ef4444; }
+        .badge-supervision { background: #8b5cf6; }
+        .badge-other { background: #3b82f6; }
+
+        .status-cancelled { background: #ef4444; opacity: 0.8; }
+        .status-effective { background: transparent; }
+        .status-partial { background: #f59e0b; opacity: 0.8; }
+
+        .spinner {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    </style>
+</head>
+<body class="text-gray-100 p-4">
+    <div id="root"></div>
+
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef } = React;
+
+        // Default configuration
+        const DEFAULT_CONFIG = {
+            searchName: '',  // Empty - will prompt on first use
+            webAppUrl: 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec',
+            version: 'enhanced',
+            configVersion: 3,  // Increment to force migration (removed test mode)
+            firstTimeSetupDone: false  // Track if first-time setup completed
+        };
+
+        // Correct API URL (with batch processing cache)
+        const CORRECT_API_URL = 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec';
+
+        // Load config from localStorage
+        const loadConfig = () => {
+            try {
+                const saved = localStorage.getItem('scheduleWidgetConfig');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+
+                    // Auto-migrate: Force correct API URL if using old deployment
+                    if (!parsed.configVersion || parsed.configVersion < 2) {
+                        console.log('🔄 Migrating to new API URL with batch cache...');
+                        parsed.webAppUrl = CORRECT_API_URL;
+                        parsed.configVersion = 2;
+                    }
+
+                    // Auto-migrate: Remove test mode (config version 3)
+                    if (parsed.configVersion < 3) {
+                        console.log('🔄 Removing test mode (now using live dates)...');
+                        delete parsed.testMode;
+                        delete parsed.testDate;
+                        parsed.configVersion = 3;
+                    }
+
+                    // Always ensure webAppUrl matches correct deployment
+                    if (parsed.webAppUrl !== CORRECT_API_URL) {
+                        console.log('🔧 Fixing API URL to use batch cache deployment...');
+                        parsed.webAppUrl = CORRECT_API_URL;
+                    }
+
+                    // Save migrated config
+                    localStorage.setItem('scheduleWidgetConfig', JSON.stringify(parsed));
+
+                    return { ...DEFAULT_CONFIG, ...parsed };
+                }
+            } catch (e) {
+                console.error('Error loading config:', e);
+            }
+            return DEFAULT_CONFIG;
+        };
+
+        // Save config to localStorage
+        const saveConfig = (config) => {
+            try {
+                localStorage.setItem('scheduleWidgetConfig', JSON.stringify(config));
+            } catch (e) {
+                console.error('Error saving config:', e);
+            }
+        };
+
+        // Parse event - check for enhanced data first
+        const parseEvent = (event) => {
+            if (event.enhanced) {
+                const enh = event.enhanced;
+                const section = enh.section;
+
+                let type, colorClass, badgeClass;
+
+                if (section === 'Flying Events') {
+                    type = 'Flying';
+                    colorClass = 'event-flying';
+                    badgeClass = 'badge-flying';
+                } else if (section === 'Ground Events') {
+                    type = 'Ground';
+                    colorClass = 'event-ground';
+                    badgeClass = 'badge-ground';
+                } else if (section === 'NA') {
+                    type = 'N/A';
+                    colorClass = 'event-na';
+                    badgeClass = 'badge-na';
+                } else if (section === 'Supervision') {
+                    type = 'Supervision';
+                    colorClass = 'event-supervision';
+                    badgeClass = 'badge-supervision';
+                } else {
+                    type = 'Other';
+                    colorClass = 'event-other';
+                    badgeClass = 'badge-other';
+                }
+
+                return { enhanced: enh, type, colorClass, badgeClass };
+            }
+
+            // Fallback: parse legacy format
+            const parts = event.description.split('|')
+                .map(p => p.trim())
+                .filter(p => p && p.toLowerCase() !== 'true' && p.toLowerCase() !== 'false');
+
+            let type = 'Other';
+            let colorClass = 'event-other';
+            let badgeClass = 'badge-other';
+
+            if (event.rangeSource) {
+                const source = event.rangeSource.toLowerCase();
+                if (source.includes('flying')) {
+                    type = 'Flying';
+                    colorClass = 'event-flying';
+                    badgeClass = 'badge-flying';
+                } else if (source.includes('ground')) {
+                    type = 'Ground';
+                    colorClass = 'event-ground';
+                    badgeClass = 'badge-ground';
+                } else if (source.includes('not available')) {
+                    type = 'N/A';
+                    colorClass = 'event-na';
+                    badgeClass = 'badge-na';
+                } else if (source.includes('supervision')) {
+                    type = 'Supervision';
+                    colorClass = 'event-supervision';
+                    badgeClass = 'badge-supervision';
+                }
+            }
+
+            return { parts, type, colorClass, badgeClass };
+        };
+
+        // Get display time from event
+        const getEventTime = (event) => {
+            if (event.enhanced) {
+                const enh = event.enhanced;
+                if (enh.section === 'Flying Events') return enh.briefStart;
+                if (enh.section === 'Ground Events') return enh.start;
+                if (enh.section === 'Supervision') return enh.start;
+                if (enh.section === 'NA') return enh.start;
+            }
+            return event.time;
+        };
+
+        // Convert time string to minutes for sorting
+        const timeToMinutes = (timeStr) => {
+            if (!timeStr) return 9999;
+            const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+            if (match) {
+                return parseInt(match[1]) * 60 + parseInt(match[2]);
+            }
+            return 9999;
+        };
+
+        // Parse ISO date string as local date (prevents timezone offset issues)
+        const parseLocalDate = (dateStr) => {
+            // dateStr is in format "2026-01-05"
+            const [year, month, day] = dateStr.split('-').map(Number);
+            return new Date(year, month - 1, day); // month is 0-indexed
+        };
+
+        // Get day name from ISO date string
+        const getDayName = (dateStr) => {
+            const date = parseLocalDate(dateStr);
+            return date.toLocaleDateString('en-US', { weekday: 'long' });
+        };
+
+        // Group flat event array by day
+        const groupEventsByDay = (events, days) => {
+            if (!events || !Array.isArray(events)) return [];
+
+            // Group events by date
+            const grouped = {};
+            events.forEach(event => {
+                const date = event.date;
+                if (!grouped[date]) {
+                    grouped[date] = {
+                        date: date,
+                        dayName: getDayName(date), // Calculate correct day name from date
+                        events: []
+                    };
+                }
+                grouped[date].events.push(event);
+            });
+
+            // Convert to array and sort by date
+            const result = Object.values(grouped).sort((a, b) => {
+                return parseLocalDate(a.date) - parseLocalDate(b.date);
+            });
+
+            return sortEventsByTime(result);
+        };
+
+        // Sort events by time
+        const sortEventsByTime = (eventsData) => {
+            if (!eventsData || !Array.isArray(eventsData)) return [];
+
+            return eventsData.map(day => ({
+                ...day,
+                events: [...day.events].sort((a, b) => {
+                    return timeToMinutes(getEventTime(a)) - timeToMinutes(getEventTime(b));
+                })
+            }));
+        };
+
+        // Get relative day label
+        const getRelativeDay = (dateStr) => {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const eventDate = new Date(dateStr + 'T00:00:00');
+            eventDate.setHours(0, 0, 0, 0);
+
+            const diffDays = Math.round((eventDate - today) / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 0) return 'Today';
+            if (diffDays === 1) return 'Tomorrow';
+            if (diffDays === -1) return 'Yesterday';
+
+            return eventDate.toLocaleDateString('en-US', { weekday: 'long' });
+        };
+
+        // Format date for display
+        const formatDate = (dateStr, dayName) => {
+            const date = parseLocalDate(dateStr);
+            const month = date.toLocaleDateString('en-US', { month: 'short' });
+            const day = date.getDate();
+            return `${dayName} ${month} ${day}`;
+        };
+
+        // Event display component
+        function EventCard({ event, dayDate, eventId, isExpanded, onToggle }) {
+            const parsed = parseEvent(event);
+            const time = getEventTime(event);
+
+            // Get event title based on section
+            const getEventTitle = () => {
+                if (!parsed.enhanced) return parsed.parts[0] || '';
+
+                switch (parsed.enhanced.section) {
+                    case 'Flying Events':
+                        return `${parsed.enhanced.model} - ${parsed.enhanced.event}`;
+                    case 'Ground Events':
+                        return parsed.enhanced.event;
+                    case 'Supervision':
+                        return parsed.enhanced.duty;
+                    case 'NA':
+                        return parsed.enhanced.reason;
+                    default:
+                        return '';
+                }
+            };
+
+            // Determine status styling
+            let statusClass = '';
+            if (parsed.enhanced?.status) {
+                if (parsed.enhanced.status.cancelled) {
+                    statusClass = 'status-cancelled';
+                } else if (parsed.enhanced.status.partiallyEffective) {
+                    statusClass = 'status-partial';
+                }
+            }
+
+            return (
+                <div
+                    className={`glass-card rounded-lg p-3 ${parsed.colorClass} ${statusClass} cursor-pointer transition-all`}
+                    onClick={onToggle}
+                >
+                    {/* Header with time, type, and event title */}
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <span className="text-gray-400 text-sm">{isExpanded ? '▼' : '▶'}</span>
+                        {time && (
+                            <span className="text-white font-medium text-sm">{time}</span>
+                        )}
+                        <span className={`text-xs px-2 py-0.5 rounded ${parsed.badgeClass} text-white`}>
+                            {parsed.type}
+                        </span>
+                        {parsed.enhanced?.status?.cancelled && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-red-600 text-white">
+                                CANCELLED
+                            </span>
+                        )}
+                        {parsed.enhanced?.status?.partiallyEffective && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-orange-600 text-white">
+                                PARTIAL
+                            </span>
+                        )}
+                        <span className="text-white text-sm font-medium">{getEventTitle()}</span>
+                    </div>
+
+                    {/* Enhanced content - only show when expanded */}
+                    {isExpanded && (parsed.enhanced ? (
+                        <div className="text-sm space-y-1">
+                            {/* Flying Events */}
+                            {parsed.enhanced.section === 'Flying Events' && (
+                                <>
+                                    <div className="text-gray-400 text-xs">
+                                        Br {parsed.enhanced.briefStart} • ETD {parsed.enhanced.etd} • ETA {parsed.enhanced.eta} • End {parsed.enhanced.debriefEnd}
+                                    </div>
+                                    {parsed.enhanced.crew.length > 0 && (
+                                        <div className="text-gray-300 text-sm">
+                                            Crew: {parsed.enhanced.crew.join(' • ')}
+                                        </div>
+                                    )}
+                                    {parsed.enhanced.notes && (
+                                        <div className="text-gray-400 text-xs italic">{parsed.enhanced.notes}</div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Ground Events */}
+                            {parsed.enhanced.section === 'Ground Events' && (
+                                <>
+                                    <div className="text-gray-400 text-xs">
+                                        {parsed.enhanced.start} - {parsed.enhanced.end}
+                                    </div>
+                                    {parsed.enhanced.people.length > 0 && (
+                                        <div className="text-gray-300 text-sm">
+                                            {parsed.enhanced.people.join(' • ')}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Supervision */}
+                            {parsed.enhanced.section === 'Supervision' && (
+                                <>
+                                    <div className="text-gray-300">POC: {parsed.enhanced.poc}</div>
+                                    {!parsed.enhanced.isAuth && (
+                                        <div className="text-gray-400 text-xs">
+                                            {parsed.enhanced.start} - {parsed.enhanced.end}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* NA (Non-Availability) */}
+                            {parsed.enhanced.section === 'NA' && (
+                                <>
+                                    <div className="text-gray-400 text-xs">
+                                        {parsed.enhanced.start} - {parsed.enhanced.end}
+                                    </div>
+                                    {parsed.enhanced.people.length > 0 && (
+                                        <div className="text-gray-300 text-sm">
+                                            {parsed.enhanced.people.join(' • ')}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    ) : (
+                        /* Legacy fallback */
+                        <div className="text-sm text-gray-300">
+                            {parsed.parts.map((part, i) => (
+                                <span key={i}>
+                                    {i > 0 && <span className="text-gray-600 mx-1">•</span>}
+                                    {part}
+                                </span>
+                            ))}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // Main App Component
+        function App() {
+            const [config, setConfig] = useState(loadConfig);
+            const [events, setEvents] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [showSettings, setShowSettings] = useState(false);
+            const [showFirstTimeSetup, setShowFirstTimeSetup] = useState(!config.firstTimeSetupDone && !config.searchName);
+            const [firstTimeName, setFirstTimeName] = useState('');
+            const [lastUpdated, setLastUpdated] = useState(null);
+            const [cacheMetadata, setCacheMetadata] = useState(null);
+            const [expandedEvents, setExpandedEvents] = useState(new Set());
+            const [tapCount, setTapCount] = useState(0);
+            const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+
+            const debounceTimerRef = useRef(null);
+            const currentRequestRef = useRef(null);
+            const inputNameRef = useRef(config.searchName);
+            const tapTimerRef = useRef(null);
+
+            // Fetch schedule
+            const fetchSchedule = useCallback(async (searchName) => {
+                if (!searchName || !config.webAppUrl) {
+                    setEvents([]);
+                    return;
+                }
+
+                const requestId = Date.now();
+                currentRequestRef.current = requestId;
+
+                setLoading(true);
+                setError(null);
+
+                try {
+                    // Build URL with parameters
+                    let url = `${config.webAppUrl}?name=${encodeURIComponent(searchName)}`;
+
+                    // Add version parameter
+                    if (config.version) {
+                        url += `&version=${config.version}`;
+                    }
+
+                    // Add cache-busting timestamp
+                    url += `&_t=${requestId}`;
+
+                    console.log('Fetching:', url);
+
+                    const response = await fetch(url);
+
+                    if (currentRequestRef.current !== requestId) {
+                        console.log('Ignoring stale response');
+                        return;
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    console.log('Received data:', data);
+
+                    if (currentRequestRef.current !== requestId) {
+                        console.log('Ignoring stale response (post-parse)');
+                        return;
+                    }
+
+                    if (data.events && Array.isArray(data.events)) {
+                        // Check if events are already grouped by day or flat
+                        let eventsData;
+
+                        if (data.events.length > 0 && data.events[0].events) {
+                            // Already grouped by day
+                            eventsData = sortEventsByTime(data.events);
+                        } else {
+                            // Flat array - need to group by day/date
+                            eventsData = groupEventsByDay(data.events, data.days);
+                        }
+
+                        setEvents(eventsData);
+                        setLastUpdated(new Date());
+
+                        // Extract cache metadata
+                        if (data.cacheUpdated) {
+                            setCacheMetadata({
+                                cacheUpdated: new Date(data.cacheUpdated),
+                                tier: data.tier,
+                                dayRange: data.dayRange,
+                                batchDuration: data.batchDuration,
+                                totalEvents: data.totalEvents
+                            });
+                        } else {
+                            setCacheMetadata(null);
+                        }
+                    } else {
+                        setEvents([]);
+                        setCacheMetadata(null);
+                    }
+                } catch (err) {
+                    if (currentRequestRef.current === requestId) {
+                        console.error('Fetch error:', err);
+                        setError(err.message);
+                    }
+                } finally {
+                    if (currentRequestRef.current === requestId) {
+                        setLoading(false);
+                    }
+                }
+            }, [config.webAppUrl, config.version]);
+
+            // Debounced fetch
+            const debouncedFetch = useCallback((searchName) => {
+                if (debounceTimerRef.current) {
+                    clearTimeout(debounceTimerRef.current);
+                }
+                debounceTimerRef.current = setTimeout(() => {
+                    fetchSchedule(searchName);
+                }, 500);
+            }, [fetchSchedule]);
+
+            // Handle name change
+            const handleNameChange = (newName) => {
+                inputNameRef.current = newName;
+                const newConfig = { ...config, searchName: newName };
+                setConfig(newConfig);
+                debouncedFetch(newName);
+            };
+
+            // Complete first-time setup
+            const handleFirstTimeSetup = () => {
+                if (!firstTimeName.trim()) return;
+
+                const newConfig = {
+                    ...config,
+                    searchName: firstTimeName.trim(),
+                    firstTimeSetupDone: true
+                };
+                setConfig(newConfig);
+                saveConfig(newConfig);
+                setShowFirstTimeSetup(false);
+                inputNameRef.current = firstTimeName.trim();
+                fetchSchedule(firstTimeName.trim());
+            };
+
+            // Save settings
+            const handleSaveSettings = () => {
+                const newConfig = { ...config, searchName: inputNameRef.current };
+                saveConfig(newConfig);
+                setShowSettings(false);
+                if (debounceTimerRef.current) {
+                    clearTimeout(debounceTimerRef.current);
+                }
+                fetchSchedule(inputNameRef.current);
+            };
+
+            // Toggle event expansion
+            const toggleEventExpansion = (eventId) => {
+                setExpandedEvents(prev => {
+                    const newSet = new Set(prev);
+                    if (newSet.has(eventId)) {
+                        newSet.delete(eventId);
+                    } else {
+                        newSet.add(eventId);
+                    }
+                    return newSet;
+                });
+            };
+
+            // Hidden feature: Triple-tap header to force batch refresh
+            const handleHeaderTap = () => {
+                const newCount = tapCount + 1;
+                setTapCount(newCount);
+
+                // Clear existing timer
+                if (tapTimerRef.current) {
+                    clearTimeout(tapTimerRef.current);
+                }
+
+                // Check if triple-tap detected
+                if (newCount >= 3) {
+                    console.log('🔄 Triple-tap detected - triggering batch refresh');
+                    setIsManualRefreshing(true);
+                    setTapCount(0);
+
+                    // Force batch processing via API
+                    const forceRefreshUrl = `${config.webAppUrl}?forceRefresh=true`;
+
+                    fetch(forceRefreshUrl)
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log('Batch refresh response:', data);
+
+                            // Show user feedback
+                            if (data.status === 'success') {
+                                console.log(`✅ Cache refreshed! Processed ${data.peopleProcessed} people in ${data.duration}s`);
+                            } else if (data.status === 'skipped') {
+                                console.log(`⏸️ Batch process skipped: ${data.message}`);
+                            }
+
+                            // Now fetch the updated schedule
+                            return fetchSchedule(config.searchName);
+                        })
+                        .catch(error => {
+                            console.error('Force refresh error:', error);
+                            // Fall back to normal refresh
+                            return fetchSchedule(config.searchName);
+                        })
+                        .finally(() => {
+                            setTimeout(() => setIsManualRefreshing(false), 1000);
+                        });
+                } else {
+                    // Reset tap count after 500ms
+                    tapTimerRef.current = setTimeout(() => {
+                        setTapCount(0);
+                    }, 500);
+                }
+            };
+
+            // Initial fetch and auto-refresh
+            useEffect(() => {
+                fetchSchedule(config.searchName);
+
+                const interval = setInterval(() => {
+                    fetchSchedule(config.searchName);
+                }, 15 * 60 * 1000);
+
+                return () => {
+                    clearInterval(interval);
+                    if (debounceTimerRef.current) {
+                        clearTimeout(debounceTimerRef.current);
+                    }
+                };
+            }, []);
+
+            // Manual refresh
+            const handleRefresh = () => {
+                if (debounceTimerRef.current) {
+                    clearTimeout(debounceTimerRef.current);
+                }
+                fetchSchedule(config.searchName);
+            };
+
+            return (
+                <div className="max-w-md mx-auto">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-4">
+                        <h1
+                            className="text-xl font-semibold text-white cursor-pointer select-none"
+                            onClick={handleHeaderTap}
+                            title="Triple-tap to force refresh"
+                        >
+                            TPS Schedule
+                            {isManualRefreshing && <span className="ml-2 text-blue-400 text-sm">🔄</span>}
+                        </h1>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleRefresh}
+                                disabled={loading}
+                                className="p-2 rounded-lg glass-card hover:bg-white/10 transition-colors disabled:opacity-50"
+                                title="Refresh"
+                            >
+                                {loading ? (
+                                    <div className="spinner"></div>
+                                ) : (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setShowSettings(!showSettings)}
+                                className="p-2 rounded-lg glass-card hover:bg-white/10 transition-colors"
+                                title="Settings"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Settings Panel */}
+                    {showSettings && (
+                        <div className="glass-card rounded-xl p-4 mb-4 fade-in">
+                            <h2 className="text-lg font-medium mb-3">Settings</h2>
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="block text-sm text-gray-400 mb-1">Search Name</label>
+                                    <input
+                                        type="text"
+                                        value={config.searchName}
+                                        onChange={(e) => handleNameChange(e.target.value)}
+                                        className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                                        placeholder="Enter name to search"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Results update as you type</p>
+                                </div>
+
+                                <button
+                                    onClick={handleSaveSettings}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 transition-colors"
+                                >
+                                    Save Settings
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* First-Time Setup Modal */}
+                    {showFirstTimeSetup && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0, 0, 0, 0.7)'}}>
+                            <div className="glass-card rounded-xl p-6 max-w-md w-full border border-white/20 shadow-2xl fade-in">
+                                <h2 className="text-2xl font-semibold mb-2 text-white">Welcome to TPS Schedule</h2>
+                                <p className="text-gray-400 mb-6">Enter your name exactly as it appears on the Whiteboard to see your schedule.</p>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm text-gray-300 mb-2">Your Name</label>
+                                        <input
+                                            type="text"
+                                            value={firstTimeName}
+                                            onChange={(e) => setFirstTimeName(e.target.value)}
+                                            onKeyPress={(e) => e.key === 'Enter' && handleFirstTimeSetup()}
+                                            className="w-full bg-black/40 border border-white/20 rounded-lg px-4 py-3 text-white text-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50"
+                                            placeholder="e.g., Smith, J *"
+                                            autoFocus
+                                        />
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Include spaces, commas, and special characters exactly as shown
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        onClick={handleFirstTimeSetup}
+                                        disabled={!firstTimeName.trim()}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-lg py-3 transition-colors"
+                                    >
+                                        Get My Schedule
+                                    </button>
+                                </div>
+
+                                <p className="text-xs text-gray-500 mt-4 text-center">
+                                    You can change this later in settings
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Status Bar */}
+                    <div className="space-y-2 text-xs mb-3">
+                        {/* Showing and Updated on same line */}
+                        <div className="flex items-center justify-between text-gray-400">
+                            <span>
+                                Showing: <span className="text-blue-400">{config.searchName || 'No name set'}</span>
+                            </span>
+                            {cacheMetadata && (
+                                <span>
+                                    Updated: {new Date(cacheMetadata.cacheUpdated).toLocaleDateString('en-US', {
+                                        month: '2-digit',
+                                        day: '2-digit',
+                                        year: '2-digit'
+                                    })} {new Date(cacheMetadata.cacheUpdated).toLocaleTimeString('en-US', {
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                        hour12: true
+                                    })}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Warning box - only shown if data is stale */}
+                        {cacheMetadata && (() => {
+                            const cacheDate = new Date(cacheMetadata.cacheUpdated);
+                            const now = new Date();
+                            const minutesOld = Math.floor((now - cacheDate) / (1000 * 60));
+
+                            // Check if we're in overnight hours (8 PM - 5 AM Pacific)
+                            const pacificTimeStr = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+                            const pacificDate = new Date(pacificTimeStr);
+                            const pacificHour = pacificDate.getHours();
+                            const isOvernightHours = pacificHour >= 20 || pacificHour < 5;
+
+                            // Stale if >25 min old during work hours (not overnight)
+                            const isStale = !isOvernightHours && minutesOld > 25;
+
+                            // Only show warning if stale
+                            if (!isStale) return null;
+
+                            return (
+                                <div className="glass-card rounded px-3 py-2 border border-yellow-500/30 bg-yellow-500/5">
+                                    <div className="flex items-start gap-2">
+                                        <span className="text-yellow-400">⚠️</span>
+                                        <div className="flex-1">
+                                            <div className="text-yellow-400 font-medium">Data may be stale</div>
+                                            <div className="text-gray-400 text-xs mt-1">
+                                                Last updated {minutesOld} minutes ago. Expected update every 15 minutes.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </div>
+
+                    {/* Error Display */}
+                    {error && (
+                        <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4 mb-4 text-red-300">
+                            <p className="font-medium">Error loading schedule</p>
+                            <p className="text-sm opacity-75">{error}</p>
+                        </div>
+                    )}
+
+                    {/* Loading State */}
+                    {loading && events.length === 0 && (
+                        <div className="glass-card rounded-xl p-8 text-center">
+                            <div className="spinner mx-auto mb-3"></div>
+                            <p className="text-gray-400">Loading schedule...</p>
+                        </div>
+                    )}
+
+                    {/* Events List */}
+                    {!loading && events.length === 0 && !error && (
+                        <div className="glass-card rounded-xl p-8 text-center">
+                            <p className="text-gray-400">No events found for "{config.searchName}"</p>
+                            <p className="text-sm text-gray-500 mt-2">Try adjusting your search name in settings</p>
+                        </div>
+                    )}
+
+                    {events.length > 0 && (
+                        <div className="space-y-4">
+                            {events.map((day, dayIndex) => (
+                                <div key={day.date} className="fade-in" style={{ animationDelay: `${dayIndex * 0.1}s` }}>
+                                    {/* Day Header */}
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className={`text-sm font-medium px-2 py-0.5 rounded ${
+                                            getRelativeDay(day.date) === 'Today'
+                                                ? 'bg-green-500/20 text-green-400'
+                                                : getRelativeDay(day.date) === 'Tomorrow'
+                                                    ? 'bg-blue-500/20 text-blue-400'
+                                                    : 'bg-gray-500/20 text-gray-400'
+                                        }`}>
+                                            {getRelativeDay(day.date)}
+                                        </span>
+                                        <span className="text-gray-400 text-sm">
+                                            {formatDate(day.date, day.dayName)}
+                                        </span>
+                                        <span className="text-gray-600 text-xs">
+                                            ({day.events.length} event{day.events.length !== 1 ? 's' : ''})
+                                        </span>
+                                    </div>
+
+                                    {/* Events for this day */}
+                                    <div className="space-y-2">
+                                        {day.events.map((event, eventIndex) => {
+                                            const eventId = `${day.date}-${eventIndex}`;
+                                            return (
+                                                <EventCard
+                                                    key={eventId}
+                                                    event={event}
+                                                    dayDate={day.date}
+                                                    eventId={eventId}
+                                                    isExpanded={expandedEvents.has(eventId)}
+                                                    onToggle={() => toggleEventExpansion(eventId)}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Footer */}
+                    <div className="mt-6 text-center text-xs text-gray-600 space-y-1">
+                        <p>Schedule is cached and refreshed every 15 minutes via background batch processing</p>
+                        {cacheMetadata && (
+                            <p className="text-gray-500">
+                                {cacheMetadata.totalEvents} events cached
+                            </p>
+                        )}
+                        <p className="text-gray-700">v5.0-tiered • Built: 2025-12-26 21:30</p>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
