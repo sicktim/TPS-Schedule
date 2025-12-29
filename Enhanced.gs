@@ -216,7 +216,7 @@ function searchNameInSheet_Enhanced(spreadsheet, sheetName, searchName) {
  */
 function parseSupervisionSection(sheet, searchName) {
   const matches = [];
-  const values = sheet.getRange("A1:N9").getDisplayValues();
+  const values = sheet.getRange(WHITEBOARD_RANGES.supervision).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const dutyType = row[0]; // Column A: SOF, OS, ODO, etc.
@@ -284,7 +284,7 @@ function parseSupervisionSection(sheet, searchName) {
  */
 function parseFlyingEventsEnhanced(sheet, searchName) {
   const matches = [];
-  const values = sheet.getRange("A11:R52").getDisplayValues();
+  const values = sheet.getRange(WHITEBOARD_RANGES.flyingEvents).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const rowText = row.join('|').toLowerCase();
@@ -357,7 +357,7 @@ function parseFlyingEventsEnhanced(sheet, searchName) {
  */
 function parseGroundEventsEnhanced(sheet, searchName) {
   const matches = [];
-  const values = sheet.getRange("A54:Q80").getDisplayValues();
+  const values = sheet.getRange(WHITEBOARD_RANGES.groundEvents).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const rowText = row.join('|').toLowerCase();
@@ -423,7 +423,7 @@ function parseGroundEventsEnhanced(sheet, searchName) {
  */
 function parseNAsEnhanced(sheet, searchName) {
   const matches = [];
-  const values = sheet.getRange("A82:N113").getDisplayValues();
+  const values = sheet.getRange(WHITEBOARD_RANGES.notAvailable).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const rowText = row.join('|').toLowerCase();

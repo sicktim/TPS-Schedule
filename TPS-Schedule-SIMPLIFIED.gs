@@ -305,10 +305,10 @@ function searchNameInSheetForWidget_Simplified(spreadsheet, sheetName, searchNam
   // ─────────────────────────────────────────────────────────────────────────
 
   const searchRanges = [
-    { range: "A1:N10",   name: "Supervision" },
-    { range: "A11:R51",  name: "Flying Events" },
-    { range: "A55:Q79",  name: "Ground Events" },
-    { range: "A82:N112", name: "Not Available" }
+    { range: WHITEBOARD_RANGES.supervision,   name: "Supervision" },
+    { range: WHITEBOARD_RANGES.flyingEvents,  name: "Flying Events" },
+    { range: WHITEBOARD_RANGES.groundEvents,  name: "Ground Events" },
+    { range: WHITEBOARD_RANGES.notAvailable,  name: "Not Available" }
   ];
 
   // ─────────────────────────────────────────────────────────────────────────

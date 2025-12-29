@@ -56,3 +56,35 @@ const SEARCH_CONFIG = {
   testMode: false,              // Set to true to enable test mode
   testDate: "2025-12-15"        // The date to simulate as "today"
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 📍 WHITEBOARD RANGE CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+// Define the cell ranges for each section of the schedule whiteboard.
+// Update these if the schedulers add/remove rows from the whiteboard.
+//
+// ⚠️ IMPORTANT: These ranges are used by ALL processors (Enhanced, Simplified, Optimized)
+// Change them here once, and all processors will use the updated ranges.
+//
+// FORMAT: "StartCell:EndCell" (e.g., "A1:N10")
+//
+// HOW TO UPDATE:
+// - If rows are added ABOVE a section: increase both start and end row numbers
+// - If rows are added WITHIN a section: increase only the end row number
+// - If columns are added: adjust the end column letter (N, R, Q, etc.)
+//
+// ═══════════════════════════════════════════════════════════════════════════
+
+const WHITEBOARD_RANGES = {
+  // Supervision section (SOF, OS, ODO, etc.)
+  supervision: "A1:N9",
+
+  // Flying Events section (aircraft operations)
+  flyingEvents: "A11:R52",
+
+  // Ground Events section (meetings, training, etc.)
+  groundEvents: "A54:Q80",
+
+  // Not Available section (leave, medical, etc.)
+  notAvailable: "A82:N113"
+};
