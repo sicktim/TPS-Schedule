@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Squadron Schedule</title>
+    <title>TPS Schedule</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#1a1a2e">
@@ -38,7 +38,7 @@
         .badge-supervision { background: #8b5cf6; }
         .badge-other { background: #3b82f6; }
 
-        .status-cancelled { background: #ef4444; opacity: 0.6; text-decoration: line-through; }
+        .status-cancelled { background: #ef4444; opacity: 0.8; }
         .status-effective { background: transparent; }
         .status-partial { background: #f59e0b; opacity: 0.8; }
 
@@ -83,13 +83,15 @@
 
         // Default configuration
         const DEFAULT_CONFIG = {
-            searchName: 'Sick',
-            daysAhead: 4,
-            webAppUrl: 'https://script.google.com/macros/s/AKfycbzviTC3JlrGVlKqVTGHhzyfUKfc-9rKLFUgqRpyVKARSJN2CqesnFKe8GEAqXWjw-Tz/exec',
+            searchName: '',  // Empty - will prompt on first use
+            webAppUrl: 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec',
             version: 'enhanced',
-            testMode: false,
-            testDate: '2025-12-15'
+            configVersion: 3,  // Increment to force migration (removed test mode)
+            firstTimeSetupDone: false  // Track if first-time setup completed
         };
+
+        // Correct API URL (with batch processing cache)
+        const CORRECT_API_URL = 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec';
 
         // Load config from localStorage
         const loadConfig = () => {
@@ -97,6 +99,31 @@
                 const saved = localStorage.getItem('scheduleWidgetConfig');
                 if (saved) {
                     const parsed = JSON.parse(saved);
+
+                    // Auto-migrate: Force correct API URL if using old deployment
+                    if (!parsed.configVersion || parsed.configVersion < 2) {
+                        console.log('🔄 Migrating to new API URL with batch cache...');
+                        parsed.webAppUrl = CORRECT_API_URL;
+                        parsed.configVersion = 2;
+                    }
+
+                    // Auto-migrate: Remove test mode (config version 3)
+                    if (parsed.configVersion < 3) {
+                        console.log('🔄 Removing test mode (now using live dates)...');
+                        delete parsed.testMode;
+                        delete parsed.testDate;
+                        parsed.configVersion = 3;
+                    }
+
+                    // Always ensure webAppUrl matches correct deployment
+                    if (parsed.webAppUrl !== CORRECT_API_URL) {
+                        console.log('🔧 Fixing API URL to use batch cache deployment...');
+                        parsed.webAppUrl = CORRECT_API_URL;
+                    }
+
+                    // Save migrated config
+                    localStorage.setItem('scheduleWidgetConfig', JSON.stringify(parsed));
+
                     return { ...DEFAULT_CONFIG, ...parsed };
                 }
             } catch (e) {
@@ -202,8 +229,49 @@
             return 9999;
         };
 
+        // Parse ISO date string as local date (prevents timezone offset issues)
+        const parseLocalDate = (dateStr) => {
+            // dateStr is in format "2026-01-05"
+            const [year, month, day] = dateStr.split('-').map(Number);
+            return new Date(year, month - 1, day); // month is 0-indexed
+        };
+
+        // Get day name from ISO date string
+        const getDayName = (dateStr) => {
+            const date = parseLocalDate(dateStr);
+            return date.toLocaleDateString('en-US', { weekday: 'long' });
+        };
+
+        // Group flat event array by day
+        const groupEventsByDay = (events, days) => {
+            if (!events || !Array.isArray(events)) return [];
+
+            // Group events by date
+            const grouped = {};
+            events.forEach(event => {
+                const date = event.date;
+                if (!grouped[date]) {
+                    grouped[date] = {
+                        date: date,
+                        dayName: getDayName(date), // Calculate correct day name from date
+                        events: []
+                    };
+                }
+                grouped[date].events.push(event);
+            });
+
+            // Convert to array and sort by date
+            const result = Object.values(grouped).sort((a, b) => {
+                return parseLocalDate(a.date) - parseLocalDate(b.date);
+            });
+
+            return sortEventsByTime(result);
+        };
+
         // Sort events by time
         const sortEventsByTime = (eventsData) => {
+            if (!eventsData || !Array.isArray(eventsData)) return [];
+
             return eventsData.map(day => ({
                 ...day,
                 events: [...day.events].sort((a, b) => {
@@ -231,16 +299,34 @@
 
         // Format date for display
         const formatDate = (dateStr, dayName) => {
-            const date = new Date(dateStr + 'T00:00:00');
+            const date = parseLocalDate(dateStr);
             const month = date.toLocaleDateString('en-US', { month: 'short' });
             const day = date.getDate();
             return `${dayName} ${month} ${day}`;
         };
 
         // Event display component
-        function EventCard({ event, dayDate }) {
+        function EventCard({ event, dayDate, eventId, isExpanded, onToggle }) {
             const parsed = parseEvent(event);
             const time = getEventTime(event);
+
+            // Get event title based on section
+            const getEventTitle = () => {
+                if (!parsed.enhanced) return parsed.parts[0] || '';
+
+                switch (parsed.enhanced.section) {
+                    case 'Flying Events':
+                        return `${parsed.enhanced.model} - ${parsed.enhanced.event}`;
+                    case 'Ground Events':
+                        return parsed.enhanced.event;
+                    case 'Supervision':
+                        return parsed.enhanced.duty;
+                    case 'NA':
+                        return parsed.enhanced.reason;
+                    default:
+                        return '';
+                }
+            };
 
             // Determine status styling
             let statusClass = '';
@@ -253,9 +339,13 @@
             }
 
             return (
-                <div className={`glass-card rounded-lg p-3 ${parsed.colorClass} ${statusClass}`}>
-                    {/* Header with time and type */}
-                    <div className="flex items-center gap-2 mb-2">
+                <div
+                    className={`glass-card rounded-lg p-3 ${parsed.colorClass} ${statusClass} cursor-pointer transition-all`}
+                    onClick={onToggle}
+                >
+                    {/* Header with time, type, and event title */}
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <span className="text-gray-400 text-sm">{isExpanded ? '▼' : '▶'}</span>
                         {time && (
                             <span className="text-white font-medium text-sm">{time}</span>
                         )}
@@ -272,21 +362,21 @@
                                 PARTIAL
                             </span>
                         )}
+                        <span className="text-white text-sm font-medium">{getEventTitle()}</span>
                     </div>
 
-                    {/* Enhanced content */}
-                    {parsed.enhanced ? (
+                    {/* Enhanced content - only show when expanded */}
+                    {isExpanded && (parsed.enhanced ? (
                         <div className="text-sm space-y-1">
                             {/* Flying Events */}
                             {parsed.enhanced.section === 'Flying Events' && (
                                 <>
-                                    <div className="text-white font-medium">{parsed.enhanced.model} - {parsed.enhanced.event}</div>
                                     <div className="text-gray-400 text-xs">
-                                        ETD: {parsed.enhanced.etd} | ETA: {parsed.enhanced.eta} | Debrief: {parsed.enhanced.debriefEnd}
+                                        Br {parsed.enhanced.briefStart} • ETD {parsed.enhanced.etd} • ETA {parsed.enhanced.eta} • End {parsed.enhanced.debriefEnd}
                                     </div>
                                     {parsed.enhanced.crew.length > 0 && (
-                                        <div className="text-gray-300">
-                                            Crew: {parsed.enhanced.crew.join(', ')}
+                                        <div className="text-gray-300 text-sm">
+                                            Crew: {parsed.enhanced.crew.join(' • ')}
                                         </div>
                                     )}
                                     {parsed.enhanced.notes && (
@@ -298,13 +388,12 @@
                             {/* Ground Events */}
                             {parsed.enhanced.section === 'Ground Events' && (
                                 <>
-                                    <div className="text-white font-medium">{parsed.enhanced.event}</div>
                                     <div className="text-gray-400 text-xs">
                                         {parsed.enhanced.start} - {parsed.enhanced.end}
                                     </div>
                                     {parsed.enhanced.people.length > 0 && (
-                                        <div className="text-gray-300">
-                                            {parsed.enhanced.people.join(', ')}
+                                        <div className="text-gray-300 text-sm">
+                                            {parsed.enhanced.people.join(' • ')}
                                         </div>
                                     )}
                                 </>
@@ -313,7 +402,6 @@
                             {/* Supervision */}
                             {parsed.enhanced.section === 'Supervision' && (
                                 <>
-                                    <div className="text-white font-medium">{parsed.enhanced.duty}</div>
                                     <div className="text-gray-300">POC: {parsed.enhanced.poc}</div>
                                     {!parsed.enhanced.isAuth && (
                                         <div className="text-gray-400 text-xs">
@@ -326,13 +414,12 @@
                             {/* NA (Non-Availability) */}
                             {parsed.enhanced.section === 'NA' && (
                                 <>
-                                    <div className="text-white font-medium">{parsed.enhanced.reason}</div>
                                     <div className="text-gray-400 text-xs">
                                         {parsed.enhanced.start} - {parsed.enhanced.end}
                                     </div>
                                     {parsed.enhanced.people.length > 0 && (
-                                        <div className="text-gray-300">
-                                            {parsed.enhanced.people.join(', ')}
+                                        <div className="text-gray-300 text-sm">
+                                            {parsed.enhanced.people.join(' • ')}
                                         </div>
                                     )}
                                 </>
@@ -348,7 +435,7 @@
                                 </span>
                             ))}
                         </div>
-                    )}
+                    ))}
                 </div>
             );
         }
@@ -360,11 +447,18 @@
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
             const [showSettings, setShowSettings] = useState(false);
+            const [showFirstTimeSetup, setShowFirstTimeSetup] = useState(!config.firstTimeSetupDone && !config.searchName);
+            const [firstTimeName, setFirstTimeName] = useState('');
             const [lastUpdated, setLastUpdated] = useState(null);
+            const [cacheMetadata, setCacheMetadata] = useState(null);
+            const [expandedEvents, setExpandedEvents] = useState(new Set());
+            const [tapCount, setTapCount] = useState(0);
+            const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
             const debounceTimerRef = useRef(null);
             const currentRequestRef = useRef(null);
             const inputNameRef = useRef(config.searchName);
+            const tapTimerRef = useRef(null);
 
             // Fetch schedule
             const fetchSchedule = useCallback(async (searchName) => {
@@ -381,18 +475,14 @@
 
                 try {
                     // Build URL with parameters
-                    let url = `${config.webAppUrl}?name=${encodeURIComponent(searchName)}&days=${config.daysAhead}`;
+                    let url = `${config.webAppUrl}?name=${encodeURIComponent(searchName)}`;
 
                     // Add version parameter
                     if (config.version) {
                         url += `&version=${config.version}`;
                     }
 
-                    // Add test date if test mode is enabled
-                    if (config.testMode && config.testDate) {
-                        url += `&testDate=${config.testDate}`;
-                    }
-
+                    // Add cache-busting timestamp
                     url += `&_t=${requestId}`;
 
                     console.log('Fetching:', url);
@@ -416,12 +506,36 @@
                         return;
                     }
 
-                    if (data.events) {
-                        const sortedEvents = sortEventsByTime(data.events);
-                        setEvents(sortedEvents);
-                        setLastUpdated(new Date()); // Only update when data is successfully received
+                    if (data.events && Array.isArray(data.events)) {
+                        // Check if events are already grouped by day or flat
+                        let eventsData;
+
+                        if (data.events.length > 0 && data.events[0].events) {
+                            // Already grouped by day
+                            eventsData = sortEventsByTime(data.events);
+                        } else {
+                            // Flat array - need to group by day/date
+                            eventsData = groupEventsByDay(data.events, data.days);
+                        }
+
+                        setEvents(eventsData);
+                        setLastUpdated(new Date());
+
+                        // Extract cache metadata
+                        if (data.cacheUpdated) {
+                            setCacheMetadata({
+                                cacheUpdated: new Date(data.cacheUpdated),
+                                tier: data.tier,
+                                dayRange: data.dayRange,
+                                batchDuration: data.batchDuration,
+                                totalEvents: data.totalEvents
+                            });
+                        } else {
+                            setCacheMetadata(null);
+                        }
                     } else {
                         setEvents([]);
+                        setCacheMetadata(null);
                     }
                 } catch (err) {
                     if (currentRequestRef.current === requestId) {
@@ -433,7 +547,7 @@
                         setLoading(false);
                     }
                 }
-            }, [config.webAppUrl, config.daysAhead, config.version, config.testMode, config.testDate]);
+            }, [config.webAppUrl, config.version]);
 
             // Debounced fetch
             const debouncedFetch = useCallback((searchName) => {
@@ -453,6 +567,22 @@
                 debouncedFetch(newName);
             };
 
+            // Complete first-time setup
+            const handleFirstTimeSetup = () => {
+                if (!firstTimeName.trim()) return;
+
+                const newConfig = {
+                    ...config,
+                    searchName: firstTimeName.trim(),
+                    firstTimeSetupDone: true
+                };
+                setConfig(newConfig);
+                saveConfig(newConfig);
+                setShowFirstTimeSetup(false);
+                inputNameRef.current = firstTimeName.trim();
+                fetchSchedule(firstTimeName.trim());
+            };
+
             // Save settings
             const handleSaveSettings = () => {
                 const newConfig = { ...config, searchName: inputNameRef.current };
@@ -462,6 +592,69 @@
                     clearTimeout(debounceTimerRef.current);
                 }
                 fetchSchedule(inputNameRef.current);
+            };
+
+            // Toggle event expansion
+            const toggleEventExpansion = (eventId) => {
+                setExpandedEvents(prev => {
+                    const newSet = new Set(prev);
+                    if (newSet.has(eventId)) {
+                        newSet.delete(eventId);
+                    } else {
+                        newSet.add(eventId);
+                    }
+                    return newSet;
+                });
+            };
+
+            // Hidden feature: Triple-tap header to force batch refresh
+            const handleHeaderTap = () => {
+                const newCount = tapCount + 1;
+                setTapCount(newCount);
+
+                // Clear existing timer
+                if (tapTimerRef.current) {
+                    clearTimeout(tapTimerRef.current);
+                }
+
+                // Check if triple-tap detected
+                if (newCount >= 3) {
+                    console.log('🔄 Triple-tap detected - triggering batch refresh');
+                    setIsManualRefreshing(true);
+                    setTapCount(0);
+
+                    // Force batch processing via API
+                    const forceRefreshUrl = `${config.webAppUrl}?forceRefresh=true`;
+
+                    fetch(forceRefreshUrl)
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log('Batch refresh response:', data);
+
+                            // Show user feedback
+                            if (data.status === 'success') {
+                                console.log(`✅ Cache refreshed! Processed ${data.peopleProcessed} people in ${data.duration}s`);
+                            } else if (data.status === 'skipped') {
+                                console.log(`⏸️ Batch process skipped: ${data.message}`);
+                            }
+
+                            // Now fetch the updated schedule
+                            return fetchSchedule(config.searchName);
+                        })
+                        .catch(error => {
+                            console.error('Force refresh error:', error);
+                            // Fall back to normal refresh
+                            return fetchSchedule(config.searchName);
+                        })
+                        .finally(() => {
+                            setTimeout(() => setIsManualRefreshing(false), 1000);
+                        });
+                } else {
+                    // Reset tap count after 500ms
+                    tapTimerRef.current = setTimeout(() => {
+                        setTapCount(0);
+                    }, 500);
+                }
             };
 
             // Initial fetch and auto-refresh
@@ -492,7 +685,14 @@
                 <div className="max-w-md mx-auto">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-4">
-                        <h1 className="text-xl font-semibold text-white">Squadron Schedule</h1>
+                        <h1
+                            className="text-xl font-semibold text-white cursor-pointer select-none"
+                            onClick={handleHeaderTap}
+                            title="Triple-tap to force refresh"
+                        >
+                            TPS Schedule
+                            {isManualRefreshing && <span className="ml-2 text-blue-400 text-sm">🔄</span>}
+                        </h1>
                         <div className="flex gap-2">
                             <button
                                 onClick={handleRefresh}
@@ -538,54 +738,6 @@
                                     <p className="text-xs text-gray-500 mt-1">Results update as you type</p>
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm text-gray-400 mb-1">Days Ahead</label>
-                                    <select
-                                        value={config.daysAhead}
-                                        onChange={(e) => {
-                                            const newConfig = { ...config, daysAhead: parseInt(e.target.value) };
-                                            setConfig(newConfig);
-                                        }}
-                                        className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
-                                    >
-                                        <option value="1">1 day</option>
-                                        <option value="4">4 days</option>
-                                        <option value="5">5 days</option>
-                                        <option value="7">7 days</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={config.testMode}
-                                            onChange={(e) => {
-                                                const newConfig = { ...config, testMode: e.target.checked };
-                                                setConfig(newConfig);
-                                            }}
-                                            className="w-4 h-4 rounded"
-                                        />
-                                        <span className="text-sm text-gray-400">Test Mode (simulate different date)</span>
-                                    </label>
-                                </div>
-
-                                {config.testMode && (
-                                    <div>
-                                        <label className="block text-sm text-gray-400 mb-1">Test Date</label>
-                                        <input
-                                            type="date"
-                                            value={config.testDate}
-                                            onChange={(e) => {
-                                                const newConfig = { ...config, testDate: e.target.value };
-                                                setConfig(newConfig);
-                                            }}
-                                            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1">Simulates this date as "today"</p>
-                                    </div>
-                                )}
-
                                 <button
                                     onClick={handleSaveSettings}
                                     className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 transition-colors"
@@ -596,15 +748,100 @@
                         </div>
                     )}
 
+                    {/* First-Time Setup Modal */}
+                    {showFirstTimeSetup && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0, 0, 0, 0.7)'}}>
+                            <div className="glass-card rounded-xl p-6 max-w-md w-full border border-white/20 shadow-2xl fade-in">
+                                <h2 className="text-2xl font-semibold mb-2 text-white">Welcome to TPS Schedule</h2>
+                                <p className="text-gray-400 mb-6">Enter your name exactly as it appears on the Whiteboard to see your schedule.</p>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm text-gray-300 mb-2">Your Name</label>
+                                        <input
+                                            type="text"
+                                            value={firstTimeName}
+                                            onChange={(e) => setFirstTimeName(e.target.value)}
+                                            onKeyPress={(e) => e.key === 'Enter' && handleFirstTimeSetup()}
+                                            className="w-full bg-black/40 border border-white/20 rounded-lg px-4 py-3 text-white text-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50"
+                                            placeholder="e.g., Smith, J *"
+                                            autoFocus
+                                        />
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Include spaces, commas, and special characters exactly as shown
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        onClick={handleFirstTimeSetup}
+                                        disabled={!firstTimeName.trim()}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-lg py-3 transition-colors"
+                                    >
+                                        Get My Schedule
+                                    </button>
+                                </div>
+
+                                <p className="text-xs text-gray-500 mt-4 text-center">
+                                    You can change this later in settings
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Status Bar */}
-                    <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                        <span>
-                            Showing: <span className="text-blue-400">{config.searchName}</span>
-                            {config.testMode && <span className="ml-2 text-orange-400">(Test: {config.testDate})</span>}
-                        </span>
-                        {lastUpdated && (
-                            <span>Updated: {lastUpdated.toLocaleTimeString()}</span>
-                        )}
+                    <div className="space-y-2 text-xs mb-3">
+                        {/* Showing and Updated on same line */}
+                        <div className="flex items-center justify-between text-gray-400">
+                            <span>
+                                Showing: <span className="text-blue-400">{config.searchName || 'No name set'}</span>
+                            </span>
+                            {cacheMetadata && (
+                                <span>
+                                    Updated: {new Date(cacheMetadata.cacheUpdated).toLocaleDateString('en-US', {
+                                        month: '2-digit',
+                                        day: '2-digit',
+                                        year: '2-digit'
+                                    })} {new Date(cacheMetadata.cacheUpdated).toLocaleTimeString('en-US', {
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                        hour12: true
+                                    })}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Warning box - only shown if data is stale */}
+                        {cacheMetadata && (() => {
+                            const cacheDate = new Date(cacheMetadata.cacheUpdated);
+                            const now = new Date();
+                            const minutesOld = Math.floor((now - cacheDate) / (1000 * 60));
+
+                            // Check if we're in overnight hours (8 PM - 5 AM Pacific)
+                            const pacificTimeStr = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+                            const pacificDate = new Date(pacificTimeStr);
+                            const pacificHour = pacificDate.getHours();
+                            const isOvernightHours = pacificHour >= 20 || pacificHour < 5;
+
+                            // Stale if >25 min old during work hours (not overnight)
+                            const isStale = !isOvernightHours && minutesOld > 25;
+
+                            // Only show warning if stale
+                            if (!isStale) return null;
+
+                            return (
+                                <div className="glass-card rounded px-3 py-2 border border-yellow-500/30 bg-yellow-500/5">
+                                    <div className="flex items-start gap-2">
+                                        <span className="text-yellow-400">⚠️</span>
+                                        <div className="flex-1">
+                                            <div className="text-yellow-400 font-medium">Data may be stale</div>
+                                            <div className="text-gray-400 text-xs mt-1">
+                                                Last updated {minutesOld} minutes ago. Expected update every 15 minutes.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* Error Display */}
@@ -656,9 +893,19 @@
 
                                     {/* Events for this day */}
                                     <div className="space-y-2">
-                                        {day.events.map((event, eventIndex) => (
-                                            <EventCard key={`${day.date}-${eventIndex}`} event={event} dayDate={day.date} />
-                                        ))}
+                                        {day.events.map((event, eventIndex) => {
+                                            const eventId = `${day.date}-${eventIndex}`;
+                                            return (
+                                                <EventCard
+                                                    key={eventId}
+                                                    event={event}
+                                                    dayDate={day.date}
+                                                    eventId={eventId}
+                                                    isExpanded={expandedEvents.has(eventId)}
+                                                    onToggle={() => toggleEventExpansion(eventId)}
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             ))}
@@ -666,9 +913,14 @@
                     )}
 
                     {/* Footer */}
-                    <div className="mt-6 text-center text-xs text-gray-600">
-                        <p>Auto-refreshes every 15 minutes</p>
-                        <p className="mt-1">Add to home screen for quick access</p>
+                    <div className="mt-6 text-center text-xs text-gray-600 space-y-1">
+                        <p>Schedule is cached and refreshed every 15 minutes via background batch processing</p>
+                        {cacheMetadata && (
+                            <p className="text-gray-500">
+                                {cacheMetadata.totalEvents} events cached
+                            </p>
+                        )}
+                        <p className="text-gray-700">v5.0-tiered • Built: 2025-12-26 21:30</p>
                     </div>
                 </div>
             );
