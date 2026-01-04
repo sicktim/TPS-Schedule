@@ -110,7 +110,7 @@ function doGet(e) {
             .setMimeType(ContentService.MimeType.JSON);
         }
 
-        // Batch process completed successfully
+        // Batch  process completed successfully
         return ContentService
           .createTextOutput(JSON.stringify({
             forceRefresh: true,
