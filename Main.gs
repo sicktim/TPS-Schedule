@@ -16,6 +16,8 @@ const ACTIVE_VERSION = "SIMPLIFIED";
  *   ?days=5              - Number of days to search
  *   ?version=simplified  - Override version (simplified/enhanced)
  *   ?forceRefresh=true   - Trigger batch cache refresh
+ *   ?viewCache=true      - View all cached data as JSON
+ *   ?viewCache=person    - View cache for specific person (use with ?name=)
  *
  * @param {Object} e - Google Apps Script event object
  * @returns {TextOutput} JSON response
@@ -23,6 +25,11 @@ const ACTIVE_VERSION = "SIMPLIFIED";
 function doGet(e) {
   try {
     const searchName = e.parameter.name || SEARCH_CONFIG.searchTerm;
+
+    // Handle view cache request
+    if (e.parameter.viewCache) {
+      return handleViewCache(e.parameter.viewCache, e.parameter.name);
+    }
 
     // Handle force refresh request
     if (e.parameter.forceRefresh === 'true' || e.parameter.refresh === 'true') {
@@ -46,6 +53,66 @@ function doGet(e) {
       message: error.toString()
     });
   }
+}
+
+/**
+ * Handle view cache request - returns cached data as JSON
+ *
+ * @param {string} mode - 'true' for all cache, 'person' for specific person
+ * @param {string} name - Person name (optional, used with mode='person')
+ */
+function handleViewCache(mode, name) {
+  const cache = CacheService.getScriptCache();
+
+  // View cache for specific person
+  if (mode === 'person' && name) {
+    const personCache = cache.get(`schedule_${name}`);
+    return createJsonResponse({
+      viewCache: true,
+      mode: 'person',
+      name: name,
+      cached: personCache ? true : false,
+      data: personCache ? JSON.parse(personCache) : null
+    });
+  }
+
+  // View all cached data
+  const batchMetadata = cache.get('batch_metadata');
+  const metadata = batchMetadata ? JSON.parse(batchMetadata) : null;
+
+  // Get the people list to know which cache keys to check
+  let cachedPeople = [];
+  if (metadata && metadata.peopleProcessed) {
+    // Try to get cache for each known person
+    const ss = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
+    const sheets = getSmartSheetRange(1);
+
+    if (sheets.length > 0) {
+      const peopleData = getAllPeople(sheets[0].sheet);
+      const allNames = [...peopleData.students, ...peopleData.staff];
+
+      allNames.forEach(personName => {
+        const personCache = cache.get(`schedule_${personName}`);
+        if (personCache) {
+          const parsed = JSON.parse(personCache);
+          cachedPeople.push({
+            name: personName,
+            eventCount: parsed.events ? parsed.events.reduce((sum, day) => sum + day.events.length, 0) : 0,
+            daysWithEvents: parsed.events ? parsed.events.length : 0
+          });
+        }
+      });
+    }
+  }
+
+  return createJsonResponse({
+    viewCache: true,
+    mode: 'all',
+    metadata: metadata,
+    cachedPeopleCount: cachedPeople.length,
+    cachedPeople: cachedPeople,
+    hint: 'Use ?viewCache=person&name=PersonName to view full cache for a specific person'
+  });
 }
 
 /**
