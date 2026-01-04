@@ -84,14 +84,14 @@
         // Default configuration
         const DEFAULT_CONFIG = {
             searchName: '',  // Empty - will prompt on first use
-            webAppUrl: 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec',
+            webAppUrl: 'https://script.google.com/macros/s/AKfycbyDlbuIRibmP0oB9nHYHa7LCrj_IOsE3GUsj3pH0FssQ07w-icVrpIA7AH5r2BribEs/exec',
             version: 'enhanced',
             configVersion: 3,  // Increment to force migration (removed test mode)
             firstTimeSetupDone: false  // Track if first-time setup completed
         };
 
-        // Correct API URL (with batch processing cache)
-        const CORRECT_API_URL = 'https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec';
+        // Correct API URL (SANDBOX - for testing date-based ranges)
+        const CORRECT_API_URL = 'https://script.google.com/macros/s/AKfycbyDlbuIRibmP0oB9nHYHa7LCrj_IOsE3GUsj3pH0FssQ07w-icVrpIA7AH5r2BribEs/exec';
 
         // Load config from localStorage
         const loadConfig = () => {
