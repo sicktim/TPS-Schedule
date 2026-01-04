@@ -42,9 +42,15 @@ function doGet(e) {
       return cachedResponse;
     }
 
-    // Cache miss - process in real-time
-    console.log(`Cache miss for ${searchName} - processing in real-time`);
-    return routeToProcessor(e);
+    // Cache miss - return error instead of processing (saves quota)
+    console.error(`CACHE MISS: "${searchName}" not found in batch cache`);
+    return createJsonResponse({
+      error: true,
+      errorType: 'CACHE_MISS',
+      message: `"${searchName}" not found in cache. This person may not be in the roster (rows 120-168). Add them to the spreadsheet roster and run ?forceRefresh=true`,
+      searchName: searchName,
+      hint: 'Check the student/staff list in the spreadsheet (rows 120-168)'
+    });
 
   } catch (error) {
     console.error("Router error:", error);

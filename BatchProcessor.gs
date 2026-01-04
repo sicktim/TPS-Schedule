@@ -191,14 +191,15 @@ function getAllPeople() {
 
   sheets.forEach(sheetInfo => {
     const sheet = sheetInfo.sheet;
-    const data = sheet.getRange('A120:O168').getDisplayValues();
+    // Expanded range to include more columns (A=0, E=4, I=8, M=12, Q=16)
+    const data = sheet.getRange('A120:R168').getDisplayValues();
 
     const columns = [
-      { col: 0, name: 'Bravo Students', type: 'student' },
-      { col: 4, name: 'Alpha Students', type: 'student' },
-      { col: 8, name: 'Staff IP', type: 'staff' },
-      { col: 12, name: 'Staff IFTE/ICSO', type: 'staff' },
-      { col: 14, name: 'Attached/Support', type: 'staff' }
+      { col: 0, name: 'Bravo Students', type: 'student' },    // Column A
+      { col: 4, name: 'Alpha Students', type: 'student' },    // Column E
+      { col: 8, name: 'Staff IP', type: 'staff' },            // Column I
+      { col: 12, name: 'Staff IFTE/ICSO', type: 'staff' },    // Column M
+      { col: 16, name: 'Attached/Support', type: 'staff' }    // Column Q
     ];
 
     columns.forEach(colDef => {
