@@ -80,29 +80,38 @@ function handleViewCache(mode, name) {
   const batchMetadata = cache.get('batch_metadata');
   const metadata = batchMetadata ? JSON.parse(batchMetadata) : null;
 
-  // Get the people list to know which cache keys to check
+  // Get the cached people list from batch processor
   let cachedPeople = [];
-  if (metadata && metadata.peopleProcessed) {
-    // Try to get cache for each known person
-    const ss = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
-    const sheets = getSmartSheetRange(1);
+  const peopleListJson = cache.get('batch_people_list');
 
-    if (sheets.length > 0) {
-      const peopleData = getAllPeople(sheets[0].sheet);
-      const allNames = [...peopleData.students, ...peopleData.staff];
+  if (peopleListJson) {
+    const peopleNames = JSON.parse(peopleListJson);
 
-      allNames.forEach(personName => {
-        const personCache = cache.get(`schedule_${personName}`);
-        if (personCache) {
-          const parsed = JSON.parse(personCache);
-          cachedPeople.push({
-            name: personName,
-            eventCount: parsed.events ? parsed.events.reduce((sum, day) => sum + day.events.length, 0) : 0,
-            daysWithEvents: parsed.events ? parsed.events.length : 0
-          });
+    peopleNames.forEach(personName => {
+      const personCache = cache.get(`schedule_${personName}`);
+      if (personCache) {
+        const parsed = JSON.parse(personCache);
+        // Handle both flat events array and nested events structure
+        let eventCount = 0;
+        if (parsed.events) {
+          if (Array.isArray(parsed.events) && parsed.events.length > 0) {
+            if (parsed.events[0].events) {
+              // Nested: [{date, events: [...]}]
+              eventCount = parsed.events.reduce((sum, day) => sum + day.events.length, 0);
+            } else {
+              // Flat: [{date, time, ...}]
+              eventCount = parsed.events.length;
+            }
+          }
         }
-      });
-    }
+        cachedPeople.push({
+          name: personName,
+          eventCount: eventCount,
+          class: parsed.class || '',
+          type: parsed.type || ''
+        });
+      }
+    });
   }
 
   return createJsonResponse({
