@@ -1,20 +1,76 @@
 // ╔════════════════════════════════════════════════════════════════════════════╗
-// ║                    SHARED CONFIGURATION                                    ║
+// ║                      TPS SCHEDULE - CONFIGURATION                          ║
 // ║                                                                            ║
-// ║  This config is shared by ALL versions (Simplified, Optimized, etc.)       ║
-// ║  Define it once here to avoid "already declared" errors                    ║
+// ║  Purpose: Centralized configuration for all processors                     ║
+// ║  Version: 4.0                                                              ║
+// ║  Last Modified: January 4, 2026                                            ║
+// ║                                                                            ║
+// ║  Contains:                                                                 ║
+// ║  - Spreadsheet ID and timezone settings                                    ║
+// ║  - Date-based range configuration (OLD_RANGES / NEW_RANGES)                ║
+// ║  - Deployment URLs for sandbox and production                              ║
+// ║  - Test mode configuration                                                 ║
 // ║                                                                            ║
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
+// ┌────────────────────────────────────────────────────────────────────────────┐
+// │                            TABLE OF CONTENTS                               │
+// ├────────────────────────────────────────────────────────────────────────────┤
+// │                                                                            │
+// │  [1] DEPLOYMENT CONFIGURATION ..................... Lines 30-50           │
+// │      - Production and Sandbox URLs (for index.html)                        │
+// │                                                                            │
+// │  [2] SEARCH CONFIGURATION ......................... Lines 55-90           │
+// │      - Spreadsheet ID, timezone, default search name                       │
+// │      - Test mode settings                                                  │
+// │                                                                            │
+// │  [3] DATE-BASED RANGE CONFIGURATION ............... Lines 95-210          │
+// │      - RANGE_TRANSITION_DATE: When whiteboard structure changes            │
+// │      - OLD_RANGES: Ranges for sheets before transition                     │
+// │      - NEW_RANGES: Ranges for sheets after transition                      │
+// │      - getRangesForDate(): Automatic range selection                       │
+// │      - getCurrentRanges(): Helper for today's ranges                       │
+// │                                                                            │
+// └────────────────────────────────────────────────────────────────────────────┘
+
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║                  [1] DEPLOYMENT CONFIGURATION                              ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+//
+// DEPLOYMENT URLS (for reference when updating docs/index.html)
+//
+// ⚠️ TO SWITCH BETWEEN SANDBOX AND PRODUCTION:
+//    Update these two lines in docs/index.html (around lines 87 and 94):
+//
+//    webAppUrl: 'PASTE_URL_HERE',
+//    const CORRECT_API_URL = 'PASTE_URL_HERE';
+//
+// PRODUCTION URL (stable, live deployment):
+//   https://script.google.com/macros/s/AKfycbwnxC-FFUB6-bYct1jSkACpdwZpamXRV4kMqNYR3pFaizjR-1aBidEMAR75MRJH8uJk/exec
+//
+// SANDBOX URL (testing, development deployment):
+//   https://script.google.com/macros/s/AKfycbyDlbuIRibmP0oB9nHYHa7LCrj_IOsE3GUsj3pH0FssQ07w-icVrpIA7AH5r2BribEs/exec
+//
+// ═══════════════════════════════════════════════════════════════════════════
+
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║                  [2] SEARCH CONFIGURATION                                  ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+
 /**
- * SEARCH_CONFIG - Global configuration shared across all versions
+ * SEARCH_CONFIG - Global configuration shared across all processors
  *
- * IMPORTANT: This is declared ONCE and used by all .gs files
+ * IMPORTANT: This is declared ONCE and used by all .gs files.
  * Do NOT redeclare this in other files!
  */
 const SEARCH_CONFIG = {
-  searchTerm: "Sick",   // Default name to search for (can be overridden by URL parameter)
-  recipientEmail: "your-email@gmail.com",  // Email address for optional email reports (not used by widget)
+  // Default name to search for (can be overridden by URL parameter)
+  searchTerm: "Sick",
+
+  // Email address for optional email reports (not currently used)
+  recipientEmail: "your-email@gmail.com",
 
   // The Google Sheets spreadsheet ID
   // Found in the spreadsheet URL: https://docs.google.com/spreadsheets/d/[THIS_PART]/edit
@@ -24,48 +80,33 @@ const SEARCH_CONFIG = {
   // CRITICAL: This must match the user's timezone to ensure "today" is correct
   // Common values: "America/Los_Angeles" (Pacific), "America/Denver" (Mountain),
   //                "America/Chicago" (Central), "America/New_York" (Eastern)
-  // Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
   timezone: "America/Los_Angeles",
 
-  // Cache TTL (only used by Optimized version)
+  // Cache TTL (not used in current simplified version)
   cacheTTL: 600,  // 10 minutes
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 🧪 TEST MODE CONFIGURATION
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Use this to test the script with a specific date as "today"
+  // Test mode: Simulate a specific date as "today"
   // Useful during holidays or when testing with historical data
   //
-  // USAGE:
   // Option 1: Enable testMode and set testDate here
-  //   testMode: true,
-  //   testDate: "2025-12-15"  // Mon 15 Dec 2025
-  //
-  // Option 2: Pass testDate as URL parameter (overrides config)
-  //   ?name=Sick&days=4&testDate=2025-12-15
-  //
-  // FORMAT: "YYYY-MM-DD" (ISO date format)
-  // EXAMPLE DATES:
-  //   "2025-12-15" = Mon 15 Dec 2025 (has events in your whiteboard)
-  //   "2025-12-16" = Tue 16 Dec 2025
-  //   "2025-12-11" = Thu 11 Dec 2025
+  // Option 2: Pass testDate as URL parameter: ?name=Sick&days=4&testDate=2025-12-15
   //
   testMode: false,              // Set to true to enable test mode
-  testDate: "2025-12-15"        // The date to simulate as "today"
+  testDate: "2025-12-15"        // Date to simulate as "today" (YYYY-MM-DD format)
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 📍 SHEET RANGE CONFIGURATION (DATE-BASED)
-// ═══════════════════════════════════════════════════════════════════════════
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║                  [3] DATE-BASED RANGE CONFIGURATION                        ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+//
 // The whiteboard structure changes over time as schedulers add/remove rows.
 // This configuration allows automatic switching between range sets based on date.
 //
-// ⚠️ IMPORTANT: Update RANGE_TRANSITION_DATE when the whiteboard changes!
-//
 // HOW TO UPDATE WHEN WHITEBOARD CHANGES:
 // 1. Set RANGE_TRANSITION_DATE to the effective date of the change
-// 2. Update the "new" ranges to match the new whiteboard structure
-// 3. Keep "old" ranges for historical sheet compatibility
+// 2. Update NEW_RANGES to match the new whiteboard structure
+// 3. Keep OLD_RANGES for historical sheet compatibility
 // 4. All processors will automatically use correct ranges based on sheet date
 //
 // ═══════════════════════════════════════════════════════════════════════════
@@ -73,11 +114,11 @@ const SEARCH_CONFIG = {
 /**
  * RANGE_TRANSITION_DATE - Date when whiteboard structure changes
  *
- * Sheets dated ON OR AFTER this date will use NEW_RANGES
- * Sheets dated BEFORE this date will use OLD_RANGES
+ * Sheets dated ON OR AFTER this date will use NEW_RANGES.
+ * Sheets dated BEFORE this date will use OLD_RANGES.
  *
  * Format: "YYYY-MM-DD"
- * Example: "2026-01-12" means Jan 12, 2026 and later use new ranges
+ * Example: "2026-01-12" means Jan 12, 2026 and later use NEW_RANGES
  */
 const RANGE_TRANSITION_DATE = "2026-01-12";
 
@@ -88,32 +129,32 @@ const RANGE_TRANSITION_DATE = "2026-01-12";
  * Keep these for backward compatibility with historical sheets.
  */
 const OLD_RANGES = {
-  supervision: "A1:N9",      // Supervision section (SOF, OS, ODO, etc.)
-  flyingEvents: "A11:R52",   // Flying Events section (aircraft operations)
-  groundEvents: "A54:Q80",   // Ground Events section (meetings, training, etc.)
-  notAvailable: "A82:N113",  // Not Available section (leave, medical, etc.)
-  peopleList: "A120:Z169"    // Student/Staff list (for person type detection)
+  supervision: "A1:N9",        // Supervision section (SOF, OS, ODO, etc.)
+  flyingEvents: "A11:R52",     // Flying Events section (aircraft operations)
+  groundEvents: "A54:Q80",     // Ground Events section (meetings, training, etc.)
+  notAvailable: "A82:N113",    // Not Available section (leave, medical, etc.)
+  peopleList: "A120:Z169"      // Student/Staff list (for person type detection)
 };
 
 /**
  * NEW_RANGES - Cell ranges for sheets ON OR AFTER transition date
  *
- * UPDATE THESE when the whiteboard structure changes!
+ * ⚠️ UPDATE THESE when the whiteboard structure changes!
  * These will be used for all sheets dated Jan 12, 2026 and later.
  *
  * Example: If schedulers add 10 rows to Flying Events:
  *   OLD: "A11:R52"  (42 rows)
  *   NEW: "A11:R62"  (52 rows)
+ *   Then shift all subsequent ranges down by 10 rows
  */
 const NEW_RANGES = {
-  // TODO: Update these ranges to match new whiteboard structure
-  // For now, they're the same as OLD_RANGES (change as needed)
-
-  supervision: "A1:N9",        // Update if supervision section changes
-  flyingEvents: "A11:R52",     // Update if flying events section changes
-  groundEvents: "A54:Q80",     // Update if ground events section changes
-  notAvailable: "A82:N113",    // Update if NA section changes
-  peopleList: "A120:Z169"      // Update if people list location changes
+  // TODO: Update these ranges to match new whiteboard structure on Jan 12, 2026
+  // For now, they're the same as OLD_RANGES
+  supervision: "A1:N9",
+  flyingEvents: "A11:R52",
+  groundEvents: "A54:Q80",
+  notAvailable: "A82:N113",
+  peopleList: "A120:Z169"
 };
 
 /**

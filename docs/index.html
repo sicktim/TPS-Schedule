@@ -79,8 +79,34 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <script type="text/babel">
+        /*
+         * ╔════════════════════════════════════════════════════════════════════════╗
+         * ║                   TPS SCHEDULE - FRONTEND APPLICATION                  ║
+         * ║                                                                        ║
+         * ║  Purpose: Mobile-friendly schedule viewer for squadron events          ║
+         * ║  Version: 4.0                                                          ║
+         * ║  Last Modified: January 4, 2026                                        ║
+         * ║                                                                        ║
+         * ║  TABLE OF CONTENTS:                                                    ║
+         * ║  [1] Configuration ........................ Lines 85-135              ║
+         * ║      - API URLs (sandbox/production)                                   ║
+         * ║      - Config load/save                                                ║
+         * ║                                                                        ║
+         * ║  [2] Event Parsing Functions .............. Lines 140-230             ║
+         * ║      - parseEvent(): Extract event type and data                       ║
+         * ║      - getEventTime(): Get display time                                ║
+         * ║      - Date utilities                                                  ║
+         * ║                                                                        ║
+         * ║  [3] React Components ..................... Lines 235-930             ║
+         * ║      - EventCard: Individual event display                             ║
+         * ║      - App: Main application component                                 ║
+         * ║                                                                        ║
+         * ╚════════════════════════════════════════════════════════════════════════╝
+         */
+
         const { useState, useEffect, useCallback, useRef } = React;
 
+        // [1] CONFIGURATION
         // Default configuration
         const DEFAULT_CONFIG = {
             searchName: '',  // Empty - will prompt on first use
