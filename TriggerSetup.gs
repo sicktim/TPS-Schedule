@@ -212,10 +212,12 @@ function getEventsForWidget(searchName, daysAhead, testDate = null) {
 
     // STEP 3: Search this specific sheet for the name
     // ⚡ OPTIMIZATION: Pass spreadsheet object instead of opening again
+    // Pass date for range selection based on sheet date
     const dayEvents = searchNameInSheetForWidget_Simplified(
       spreadsheet,  // ← Reuse the already-opened spreadsheet!
       sheetName,
-      searchName
+      searchName,
+      date          // ← Pass date for range selection
     );
 
     // Track what we searched (helps debug "why isn't X showing?" issues)
@@ -279,13 +281,15 @@ function getEventsForWidget(searchName, daysAhead, testDate = null) {
  * 2. Uses getDisplayValues() instead of getValues() (40-50% faster!)
  * 3. Batch range reads with getRangeList (4 calls → 1)
  * 4. NO CACHING - Always fetches fresh data from sheet
+ * 5. Date-based range selection (supports whiteboard structure changes)
  *
  * @param {Spreadsheet} spreadsheet - Pre-opened spreadsheet object
  * @param {string} sheetName - The name of the sheet tab to search
  * @param {string} searchName - The name to search for
+ * @param {Date} sheetDate - The date of the sheet (for range selection)
  * @returns {Array} Array of event objects (same format as original)
  */
-function searchNameInSheetForWidget_Simplified(spreadsheet, sheetName, searchName) {
+function searchNameInSheetForWidget_Simplified(spreadsheet, sheetName, searchName, sheetDate) {
   // ─────────────────────────────────────────────────────────────────────────
   // STEP 1: Get the specific sheet
   // ─────────────────────────────────────────────────────────────────────────
@@ -301,14 +305,18 @@ function searchNameInSheetForWidget_Simplified(spreadsheet, sheetName, searchNam
   console.log(`Searching sheet: ${sheetName}`);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // STEP 2: Define the ranges to search
+  // STEP 2: Get correct ranges based on sheet date
   // ─────────────────────────────────────────────────────────────────────────
 
+  // Get date-based ranges from Config.gs
+  const ranges = getRangesForDate(sheetDate);
+
+  // Build searchRanges array using date-based configuration
   const searchRanges = [
-    { range: "A1:N10",   name: "Supervision" },
-    { range: "A11:R51",  name: "Flying Events" },
-    { range: "A55:Q79",  name: "Ground Events" },
-    { range: "A82:N112", name: "Not Available" }
+    { range: ranges.supervision,   name: "Supervision" },
+    { range: ranges.flyingEvents,  name: "Flying Events" },
+    { range: ranges.groundEvents,  name: "Ground Events" },
+    { range: ranges.notAvailable,  name: "Not Available" }
   ];
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -724,7 +732,7 @@ function diagnoseToday() {
     console.log(`   ✅ YES - Sheet "${todaySheetName}" exists`);
 
     console.log(`\n4. SEARCHING FOR "Sick" IN TODAY'S SHEET:`);
-    const events = searchNameInSheetForWidget_Simplified(spreadsheet, todaySheetName, "Sick");
+    const events = searchNameInSheetForWidget_Simplified(spreadsheet, todaySheetName, "Sick", today);
 
     if (events.length > 0) {
       console.log(`   ✅ Found ${events.length} event(s):`);

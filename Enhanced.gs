@@ -114,7 +114,7 @@ function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null, sho
       const firstSheet = spreadsheet.getSheetByName(firstSheetName);
 
       if (firstSheet) {
-        personType = getPersonType(firstSheet, searchName);
+        personType = getPersonType(firstSheet, searchName, formatDateISO(firstDay));
         console.log(`Person type determined: ${personType}`);
       } else {
         console.warn(`Could not find sheet ${firstSheetName} to determine person type`);
@@ -144,7 +144,8 @@ function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null, sho
     const dayEvents = searchNameInSheet_Enhanced(
       spreadsheet,
       sheetName,
-      searchName
+      searchName,
+      formatDateISO(date)  // Pass date for range selection
     );
 
     // Add academics if enabled and person is a student
@@ -214,7 +215,7 @@ function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null, sho
 /**
  * searchNameInSheet_Enhanced() - Enhanced parsing of all sheet sections
  *
- * Parses 4 main sections:
+ * Parses 4 main sections using date-based range configuration:
  * 1. Supervision (rows 1-9)
  * 2. Flying Events (rows 11-52)
  * 3. Ground Events (rows 54-80)
@@ -223,9 +224,10 @@ function getEventsForWidget_Enhanced(searchName, daysAhead, testDate = null, sho
  * @param {Spreadsheet} spreadsheet - Pre-opened spreadsheet
  * @param {string} sheetName - Sheet tab name
  * @param {string} searchName - Name to search for
+ * @param {string} sheetDate - Date of sheet (YYYY-MM-DD) for range selection
  * @returns {Array} Array of enhanced event objects
  */
-function searchNameInSheet_Enhanced(spreadsheet, sheetName, searchName) {
+function searchNameInSheet_Enhanced(spreadsheet, sheetName, searchName, sheetDate) {
   const sheet = spreadsheet.getSheetByName(sheetName);
 
   if (!sheet) {
@@ -233,15 +235,15 @@ function searchNameInSheet_Enhanced(spreadsheet, sheetName, searchName) {
     return [];
   }
 
-  console.log(`🔍 ENHANCED PARSING: ${sheetName}`);
+  console.log(`🔍 ENHANCED PARSING: ${sheetName} (date: ${sheetDate})`);
 
   const matches = [];
 
-  // Parse each section
-  matches.push(...parseSupervisionSection(sheet, searchName));
-  matches.push(...parseFlyingEventsEnhanced(sheet, searchName));
-  matches.push(...parseGroundEventsEnhanced(sheet, searchName));
-  matches.push(...parseNAsEnhanced(sheet, searchName));
+  // Parse each section (pass date for range selection)
+  matches.push(...parseSupervisionSection(sheet, searchName, sheetDate));
+  matches.push(...parseFlyingEventsEnhanced(sheet, searchName, sheetDate));
+  matches.push(...parseGroundEventsEnhanced(sheet, searchName, sheetDate));
+  matches.push(...parseNAsEnhanced(sheet, searchName, sheetDate));
 
   console.log(`Found ${matches.length} enhanced matches for "${searchName}"`);
 
@@ -256,7 +258,7 @@ function searchNameInSheet_Enhanced(spreadsheet, sheetName, searchName) {
 // ╚════════════════════════════════════════════════════════════════════════════╝
 
 /**
- * parseSupervisionSection() - Parse Supervision (rows 1-9)
+ * parseSupervisionSection() - Parse Supervision section with date-based ranges
  *
  * Layout: Each row has duty type + multiple time slots (POC, Start, End) horizontally
  * Example: SOF | 416th | 07:30 | 12:00 | Coleman | 12:00 | 16:30 | ...
@@ -265,11 +267,15 @@ function searchNameInSheet_Enhanced(spreadsheet, sheetName, searchName) {
  *
  * @param {Sheet} sheet - The sheet object
  * @param {string} searchName - Name to search for
+ * @param {string} sheetDate - Date of sheet (YYYY-MM-DD) for range selection
  * @returns {Array} Array of supervision events
  */
-function parseSupervisionSection(sheet, searchName) {
+function parseSupervisionSection(sheet, searchName, sheetDate) {
   const matches = [];
-  const values = sheet.getRange("A1:N9").getDisplayValues();
+
+  // Get correct ranges based on sheet date
+  const ranges = getRangesForDate(sheetDate);
+  const values = sheet.getRange(ranges.supervision).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const dutyType = row[0]; // Column A: SOF, OS, ODO, etc.
@@ -319,7 +325,7 @@ function parseSupervisionSection(sheet, searchName) {
 
 
 /**
- * parseFlyingEventsEnhanced() - Parse Flying Events (rows 11-52)
+ * parseFlyingEventsEnhanced() - Parse Flying Events with date-based ranges
  *
  * Columns:
  * A: Model
@@ -333,11 +339,15 @@ function parseSupervisionSection(sheet, searchName) {
  *
  * @param {Sheet} sheet - The sheet object
  * @param {string} searchName - Name to search for
+ * @param {string} sheetDate - Date of sheet (YYYY-MM-DD) for range selection
  * @returns {Array} Array of flying event objects
  */
-function parseFlyingEventsEnhanced(sheet, searchName) {
+function parseFlyingEventsEnhanced(sheet, searchName, sheetDate) {
   const matches = [];
-  const values = sheet.getRange("A11:R52").getDisplayValues();
+
+  // Get correct ranges based on sheet date
+  const ranges = getRangesForDate(sheetDate);
+  const values = sheet.getRange(ranges.flyingEvents).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const rowText = row.join('|').toLowerCase();
@@ -395,7 +405,7 @@ function parseFlyingEventsEnhanced(sheet, searchName) {
 
 
 /**
- * parseGroundEventsEnhanced() - Parse Ground Events (rows 54-80)
+ * parseGroundEventsEnhanced() - Parse Ground Events with date-based ranges
  *
  * Columns:
  * A: Event
@@ -406,11 +416,15 @@ function parseFlyingEventsEnhanced(sheet, searchName) {
  *
  * @param {Sheet} sheet - The sheet object
  * @param {string} searchName - Name to search for
+ * @param {string} sheetDate - Date of sheet (YYYY-MM-DD) for range selection
  * @returns {Array} Array of ground event objects
  */
-function parseGroundEventsEnhanced(sheet, searchName) {
+function parseGroundEventsEnhanced(sheet, searchName, sheetDate) {
   const matches = [];
-  const values = sheet.getRange("A54:Q80").getDisplayValues();
+
+  // Get correct ranges based on sheet date
+  const ranges = getRangesForDate(sheetDate);
+  const values = sheet.getRange(ranges.groundEvents).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const rowText = row.join('|').toLowerCase();
@@ -462,7 +476,7 @@ function parseGroundEventsEnhanced(sheet, searchName) {
 
 
 /**
- * parseNAsEnhanced() - Parse NAs / Non-Availabilities (rows 82-113)
+ * parseNAsEnhanced() - Parse NAs / Non-Availabilities with date-based ranges
  *
  * Columns:
  * A: Reason
@@ -472,11 +486,15 @@ function parseGroundEventsEnhanced(sheet, searchName) {
  *
  * @param {Sheet} sheet - The sheet object
  * @param {string} searchName - Name to search for
+ * @param {string} sheetDate - Date of sheet (YYYY-MM-DD) for range selection
  * @returns {Array} Array of NA objects
  */
-function parseNAsEnhanced(sheet, searchName) {
+function parseNAsEnhanced(sheet, searchName, sheetDate) {
   const matches = [];
-  const values = sheet.getRange("A82:N113").getDisplayValues();
+
+  // Get correct ranges based on sheet date
+  const ranges = getRangesForDate(sheetDate);
+  const values = sheet.getRange(ranges.notAvailable).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const rowText = row.join('|').toLowerCase();
@@ -523,10 +541,13 @@ function parseNAsEnhanced(sheet, searchName) {
  * @param {string} searchName - Name to search for
  * @returns {string|null} Person's category or null if not found
  */
-function getPersonType(sheet, searchName) {
+function getPersonType(sheet, searchName, sheetDate = null) {
   try {
-    // Student/Staff list is in rows 120-169
-    const listRange = sheet.getRange('A120:Z169');
+    // Get correct ranges based on sheet date (or current date if not provided)
+    const ranges = sheetDate ? getRangesForDate(sheetDate) : getCurrentRanges();
+
+    // Student/Staff list location from configuration
+    const listRange = sheet.getRange(ranges.peopleList);
     const listValues = listRange.getDisplayValues();
 
     // Search for the person's name in this area
@@ -837,7 +858,7 @@ function shouldShowGroupedEvent(eventType, personType) {
 function getGroupedEventsForPerson(sheet, personType, date) {
   const groupedEvents = [];
 
-  // Parse each section using structure-aware methods
+  // Parse each section using structure-aware methods (pass date for range selection)
   groupedEvents.push(...parseGroundEventsForGroups(sheet, personType, date));
   groupedEvents.push(...parseFlyingEventsForGroups(sheet, personType, date));
   groupedEvents.push(...parseSupervisionForGroups(sheet, personType, date));
@@ -858,7 +879,10 @@ function getGroupedEventsForPerson(sheet, personType, date) {
  */
 function parseGroundEventsForGroups(sheet, personType, date) {
   const matches = [];
-  const values = sheet.getRange('A54:Q80').getDisplayValues();
+
+  // Get correct ranges based on sheet date
+  const ranges = getRangesForDate(date);
+  const values = sheet.getRange(ranges.groundEvents).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const event = row[0];  // A: Event name
@@ -935,7 +959,10 @@ function parseGroundEventsForGroups(sheet, personType, date) {
  */
 function parseFlyingEventsForGroups(sheet, personType, date) {
   const matches = [];
-  const values = sheet.getRange('A11:R52').getDisplayValues();
+
+  // Get correct ranges based on sheet date
+  const ranges = getRangesForDate(date);
+  const values = sheet.getRange(ranges.flyingEvents).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const model = row[0];       // A: Model
@@ -1012,7 +1039,10 @@ function parseFlyingEventsForGroups(sheet, personType, date) {
  */
 function parseSupervisionForGroups(sheet, personType, date) {
   const matches = [];
-  const values = sheet.getRange('A1:N9').getDisplayValues();
+
+  // Get correct ranges based on sheet date
+  const ranges = getRangesForDate(date);
+  const values = sheet.getRange(ranges.supervision).getDisplayValues();
 
   values.forEach((row, rowIndex) => {
     const dutyType = row[0]; // Column A: SOF, OS, ODO, etc.

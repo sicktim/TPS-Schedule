@@ -723,8 +723,11 @@ function getAllPeople() {
   sheets.forEach(sheetInfo => {
     const sheet = sheetInfo.sheet;
 
-    // Read all 5 columns at once (A, E, I, M, O from rows 120-168)
-    const data = sheet.getRange('A120:O168').getDisplayValues();
+    // Get correct ranges based on sheet date
+    const ranges = getRangesForDate(sheetInfo.date);
+
+    // Read all 5 columns at once from people list location
+    const data = sheet.getRange(ranges.peopleList).getDisplayValues();
 
     // Column definitions with their indices and types
     const columns = [
@@ -803,12 +806,15 @@ function processSheet(sheetInfo, people) {
     results[person.name] = { events: [] };
   });
 
-  // Read all sections ONCE
+  // Get correct ranges based on sheet date
+  const ranges = getRangesForDate(sheetInfo.date);
+
+  // Read all sections ONCE (using date-based ranges)
   const allData = {
-    supervision: sheet.getRange('A1:N9').getDisplayValues(),
-    flying: sheet.getRange('A11:R52').getDisplayValues(),
-    ground: sheet.getRange('A54:M80').getDisplayValues(),
-    na: sheet.getRange('A82:K113').getDisplayValues()
+    supervision: sheet.getRange(ranges.supervision).getDisplayValues(),
+    flying: sheet.getRange(ranges.flyingEvents).getDisplayValues(),
+    ground: sheet.getRange(ranges.groundEvents).getDisplayValues(),
+    na: sheet.getRange(ranges.notAvailable).getDisplayValues()
   };
 
   // Process each section for all people
