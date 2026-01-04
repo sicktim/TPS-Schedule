@@ -13,11 +13,8 @@
  * Do NOT redeclare this in other files!
  */
 const SEARCH_CONFIG = {
-  // Default name to search for (can be overridden by URL parameter)
-  searchTerm: "Sick",
-
-  // Email address for optional email reports (not used by widget)
-  recipientEmail: "your-email@gmail.com",
+  searchTerm: "Sick",   // Default name to search for (can be overridden by URL parameter)
+  recipientEmail: "your-email@gmail.com",  // Email address for optional email reports (not used by widget)
 
   // The Google Sheets spreadsheet ID
   // Found in the spreadsheet URL: https://docs.google.com/spreadsheets/d/[THIS_PART]/edit
@@ -91,20 +88,11 @@ const RANGE_TRANSITION_DATE = "2026-01-12";
  * Keep these for backward compatibility with historical sheets.
  */
 const OLD_RANGES = {
-  // Supervision section (SOF, OS, ODO, etc.)
-  supervision: "A1:N9",
-
-  // Flying Events section (aircraft operations)
-  flyingEvents: "A11:R52",
-
-  // Ground Events section (meetings, training, etc.)
-  groundEvents: "A54:Q80",
-
-  // Not Available section (leave, medical, etc.)
-  notAvailable: "A82:N113",
-
-  // Student/Staff list (for person type detection)
-  peopleList: "A120:Z169"
+  supervision: "A1:N9",      // Supervision section (SOF, OS, ODO, etc.)
+  flyingEvents: "A11:R52",   // Flying Events section (aircraft operations)
+  groundEvents: "A54:Q80",   // Ground Events section (meetings, training, etc.)
+  notAvailable: "A82:N113",  // Not Available section (leave, medical, etc.)
+  peopleList: "A120:Z169"    // Student/Staff list (for person type detection)
 };
 
 /**
