@@ -132,21 +132,14 @@ function handleViewCache(mode, name) {
 
 /**
  * Handle force refresh request - triggers batch processing
+ * NOTE: This bypasses overnight hours check - always processes when manually triggered
  */
 function handleForceRefresh() {
-  console.log('Force refresh requested - triggering batch process');
+  console.log('Force refresh requested - bypassing overnight check, triggering batch process');
 
   try {
-    const result = batchProcessSchedule();
-
-    if (result && result.skipped) {
-      return createJsonResponse({
-        forceRefresh: true,
-        status: 'skipped',
-        reason: result.reason,
-        message: 'Batch process skipped (overnight hours)'
-      });
-    }
+    // Call batchProcessAll directly to bypass overnight hours check
+    const result = batchProcessAll(7);
 
     return createJsonResponse({
       forceRefresh: true,
@@ -174,7 +167,19 @@ function getCachedSchedule(searchName) {
   const cacheKey = `schedule_${searchName}`;
   const cached = cache.get(cacheKey);
 
-  if (!cached) return null;
+  // Check if batch processing is in progress
+  const isRefreshing = cache.get('batch_processing') === 'true';
+
+  if (!cached) {
+    // If refreshing, return special response instead of null
+    if (isRefreshing) {
+      return createJsonResponse({
+        isRefreshing: true,
+        message: 'Cache is being refreshed, please wait...'
+      });
+    }
+    return null;
+  }
 
   console.log(`Cache hit for ${searchName}`);
 
@@ -188,6 +193,9 @@ function getCachedSchedule(searchName) {
     response.batchDuration = metadata.duration;
     response.totalEvents = metadata.eventsFound;
   }
+
+  // Include refreshing status
+  response.isRefreshing = isRefreshing;
 
   return createJsonResponse(response);
 }

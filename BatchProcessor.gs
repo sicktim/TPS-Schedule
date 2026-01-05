@@ -5,23 +5,33 @@
  * Runs every 15 minutes during work hours, automatically skips overnight.
  *
  * TRIGGER CONFIGURATION:
- * - Single trigger: Every 15 minutes
- * - Processes: All 7 days of schedules
- * - Overnight skip: 10 PM - 5 AM Pacific (saves quota)
+ * - 15-minute trigger: batchProcessSchedule() - skips overnight hours
+ * - Daily 2 AM trigger: overnightCacheRefresh() - keeps cache alive overnight
+ * - Overnight skip: 8 PM - 7 AM Pacific (saves quota)
  *
  * Cache Limits (Google Apps Script):
  * - CacheService: 1MB per entry, 10MB total, 6 hour max TTL
+ * - The 2 AM refresh prevents cache expiration during 11-hour overnight skip
  */
 
 /**
- * Check if current time is in overnight hours (10 PM - 5 AM Pacific)
+ * Check if current time is in overnight hours (8 PM - 7 AM Pacific)
  * @returns {boolean} True if overnight hours
  */
 function isOvernightHours() {
   const now = new Date();
   const pacificTimeStr = Utilities.formatDate(now, SEARCH_CONFIG.timezone, 'HH');
   const pacificHour = parseInt(pacificTimeStr);
-  return pacificHour >= 22 || pacificHour < 5;
+  return pacificHour >= 20 || pacificHour < 7;
+}
+
+/**
+ * Overnight cache refresh - run via daily trigger at 2 AM
+ * Keeps cache alive during overnight skip period
+ */
+function overnightCacheRefresh() {
+  console.log('Overnight cache refresh triggered at 2 AM');
+  return batchProcessAll(7);
 }
 
 /**
@@ -57,6 +67,10 @@ function batchProcessAll(daysToProcess = 7) {
     console.log(`Requested: ${daysToProcess} days`);
 
     const cache = CacheService.getScriptCache();
+
+    // Set refreshing flag (5 min TTL as safety in case of crash)
+    cache.put('batch_processing', 'true', 300);
+
     const sheets = getSmartSheetRange(daysToProcess);
     console.log(`Found ${sheets.length} available sheets\n`);
 
@@ -157,6 +171,9 @@ function batchProcessAll(daysToProcess = 7) {
 
     cache.put('batch_metadata', JSON.stringify(metadata), SEARCH_CONFIG.cacheTTL);
 
+    // Clear refreshing flag
+    cache.remove('batch_processing');
+
     console.log('\n=== Batch Processing Complete ===');
     console.log(`Duration: ${metrics.totalDuration.toFixed(2)} minutes`);
     console.log(`Sheets: ${metrics.sheetsProcessed}`);
@@ -168,6 +185,8 @@ function batchProcessAll(daysToProcess = 7) {
   } catch (error) {
     console.error('FATAL ERROR:', error.toString());
     metrics.errors.push(`FATAL: ${error.toString()}`);
+    // Clear refreshing flag on error too
+    CacheService.getScriptCache().remove('batch_processing');
     throw error;
   }
 }

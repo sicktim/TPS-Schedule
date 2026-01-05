@@ -454,6 +454,7 @@
             const [expandedEvents, setExpandedEvents] = useState(new Set());
             const [tapCount, setTapCount] = useState(0);
             const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+            const [isBackendRefreshing, setIsBackendRefreshing] = useState(false);
 
             const debounceTimerRef = useRef(null);
             const currentRequestRef = useRef(null);
@@ -504,6 +505,18 @@
                     if (currentRequestRef.current !== requestId) {
                         console.log('Ignoring stale response (post-parse)');
                         return;
+                    }
+
+                    // Check if backend is refreshing cache
+                    if (data.isRefreshing) {
+                        console.log('🔄 Backend is refreshing cache...');
+                        setIsBackendRefreshing(true);
+                        // If no events data, keep showing refresh state
+                        if (!data.events) {
+                            return;
+                        }
+                    } else {
+                        setIsBackendRefreshing(false);
                     }
 
                     if (data.events && Array.isArray(data.events)) {
@@ -793,7 +806,13 @@
                         {/* Showing and Updated on same line */}
                         <div className="flex items-center justify-between text-gray-400">
                             <span>
-                                Showing: <span className="text-blue-400">{config.searchName || 'No name set'}</span>
+                                Showing: <span
+                                    className="text-blue-400 cursor-pointer"
+                                    onClick={() => setShowSettings(true)}
+                                >{config.searchName || 'No name set'}</span>
+                                {isBackendRefreshing && events.length > 0 && (
+                                    <span className="ml-2 text-blue-400 animate-pulse">• Refreshing...</span>
+                                )}
                             </span>
                             {cacheMetadata && (
                                 <span>
@@ -860,8 +879,17 @@
                         </div>
                     )}
 
+                    {/* Backend Refreshing Overlay */}
+                    {isBackendRefreshing && events.length === 0 && (
+                        <div className="glass-card rounded-xl p-8 text-center">
+                            <div className="spinner mx-auto mb-3" style={{width: '32px', height: '32px', borderWidth: '3px'}}></div>
+                            <p className="text-blue-400 font-medium">Refreshing Schedule Data...</p>
+                            <p className="text-sm text-gray-500 mt-2">The cache is being updated. This usually takes 30-60 seconds.</p>
+                        </div>
+                    )}
+
                     {/* Events List */}
-                    {!loading && events.length === 0 && !error && (
+                    {!loading && !isBackendRefreshing && events.length === 0 && !error && (
                         <div className="glass-card rounded-xl p-8 text-center">
                             <p className="text-gray-400">No events found for "{config.searchName}"</p>
                             <p className="text-sm text-gray-500 mt-2">Try adjusting your search name in settings</p>
@@ -920,7 +948,7 @@
                                 {cacheMetadata.totalEvents} events cached
                             </p>
                         )}
-                        <p className="text-gray-700">v5.0-tiered • Built: 2025-12-26 21:30</p>
+                        <p className="text-gray-700">v5.1-tiered • Built: 2026-01-04</p>
                     </div>
                 </div>
             );
