@@ -57,6 +57,10 @@ function batchProcessAll(daysToProcess = 7) {
     console.log(`Requested: ${daysToProcess} days`);
 
     const cache = CacheService.getScriptCache();
+
+    // Set refreshing flag (5 min TTL as safety in case of crash)
+    cache.put('batch_processing', 'true', 300);
+
     const sheets = getSmartSheetRange(daysToProcess);
     console.log(`Found ${sheets.length} available sheets\n`);
 
@@ -157,6 +161,9 @@ function batchProcessAll(daysToProcess = 7) {
 
     cache.put('batch_metadata', JSON.stringify(metadata), SEARCH_CONFIG.cacheTTL);
 
+    // Clear refreshing flag
+    cache.remove('batch_processing');
+
     console.log('\n=== Batch Processing Complete ===');
     console.log(`Duration: ${metrics.totalDuration.toFixed(2)} minutes`);
     console.log(`Sheets: ${metrics.sheetsProcessed}`);
@@ -168,6 +175,8 @@ function batchProcessAll(daysToProcess = 7) {
   } catch (error) {
     console.error('FATAL ERROR:', error.toString());
     metrics.errors.push(`FATAL: ${error.toString()}`);
+    // Clear refreshing flag on error too
+    CacheService.getScriptCache().remove('batch_processing');
     throw error;
   }
 }
