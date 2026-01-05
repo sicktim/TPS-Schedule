@@ -7,21 +7,23 @@
  * TRIGGER CONFIGURATION:
  * - Single trigger: Every 15 minutes
  * - Processes: All 7 days of schedules
- * - Overnight skip: 10 PM - 5 AM Pacific (saves quota)
+ * - Overnight skip: 10 PM - 4 AM Pacific (6 hours to match cache TTL)
  *
  * Cache Limits (Google Apps Script):
  * - CacheService: 1MB per entry, 10MB total, 6 hour max TTL
+ * - IMPORTANT: Overnight skip must be <= 6 hours or cache expires before refresh
  */
 
 /**
- * Check if current time is in overnight hours (10 PM - 5 AM Pacific)
+ * Check if current time is in overnight hours (10 PM - 4 AM Pacific)
+ * Note: Limited to 6 hours max to match cache TTL (prevents cache expiration gap)
  * @returns {boolean} True if overnight hours
  */
 function isOvernightHours() {
   const now = new Date();
   const pacificTimeStr = Utilities.formatDate(now, SEARCH_CONFIG.timezone, 'HH');
   const pacificHour = parseInt(pacificTimeStr);
-  return pacificHour >= 22 || pacificHour < 5;
+  return pacificHour >= 22 || pacificHour < 4;
 }
 
 /**

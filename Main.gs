@@ -132,21 +132,14 @@ function handleViewCache(mode, name) {
 
 /**
  * Handle force refresh request - triggers batch processing
+ * NOTE: This bypasses overnight hours check - always processes when manually triggered
  */
 function handleForceRefresh() {
-  console.log('Force refresh requested - triggering batch process');
+  console.log('Force refresh requested - bypassing overnight check, triggering batch process');
 
   try {
-    const result = batchProcessSchedule();
-
-    if (result && result.skipped) {
-      return createJsonResponse({
-        forceRefresh: true,
-        status: 'skipped',
-        reason: result.reason,
-        message: 'Batch process skipped (overnight hours)'
-      });
-    }
+    // Call batchProcessAll directly to bypass overnight hours check
+    const result = batchProcessAll(7);
 
     return createJsonResponse({
       forceRefresh: true,
