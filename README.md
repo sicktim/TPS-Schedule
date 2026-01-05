@@ -358,72 +358,115 @@ const SEARCH_CONFIG = {
   // Default search term
   searchTerm: "Sick",
 
-  // Cache duration (optimized version only)
-  cacheTTL: 600  // 10 minutes
+  // Cache duration (6 hours)
+  cacheTTL: 21600
 };
 ```
+
+### Sheet Structure Configuration
+
+The sheet structure is **configurable** in Config.gs with automatic changeover support:
+
+```javascript
+// Changeover date - sheets on/after this date use new structure
+const STRUCTURE_CHANGEOVER_DATE = '2026-01-12';
+
+const SHEET_STRUCTURES = {
+  legacy: {
+    sections: {
+      supervision: { range: 'A1:N9' },
+      flying: { range: 'A11:R52' },
+      ground: { range: 'A54:M80' },
+      na: { range: 'A82:K113' }
+    },
+    roster: { range: 'A120:R168', columns: [...] }
+  },
+  current: {
+    sections: {
+      supervision: { range: 'A1:N11' },
+      flying: { range: 'A13:R134' },
+      ground: { range: 'A136:M237' },
+      na: { range: 'A239:K340' }
+    },
+    roster: { ranges: [...] }  // Multiple ranges for FTC-B, STC-B, etc.
+  }
+};
+```
+
+**How It Works:**
+- Structure is determined **per sheet** based on the sheet's date
+- Sheets before changeover date → legacy structure
+- Sheets on/after changeover date → current structure
+- All processors call `getSectionRanges(sheetDate)` to get correct ranges
+
+### URL Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `?name=` | Person to search for | `?name=Sick` |
+| `?days=` | Number of days to search | `?days=5` |
+| `?forceRefresh=true` | Trigger batch cache refresh | `?forceRefresh=true` |
+| `?viewCache=true` | View all cached people | `?viewCache=true` |
+| `?viewCache=person&name=` | View cache for specific person | `?viewCache=person&name=Sick` |
 
 ### Active Version (Main.gs)
 
 ```javascript
 // Controls which processor handles requests
 const ACTIVE_VERSION = "SIMPLIFIED";
-// Options: "SIMPLIFIED", "OPTIMIZED", "ENHANCED"
+// Options: "SIMPLIFIED", "ENHANCED"
 ```
 
 **Current Setup**:
 - ✅ SIMPLIFIED version is active
-- ✅ No caching in processor (batch processor handles caching)
-- ✅ Simple text parsing (fast and reliable)
+- ✅ Batch processor handles caching (6 hour TTL)
+- ✅ Cache miss returns error (saves quota)
 
 ---
 
-## 🚨 **Known Issues**
+## ✅ **Resolved Issues**
 
-### Range Inconsistencies
+### Range Inconsistencies - FIXED
 
-The cell ranges are **hardcoded** and **inconsistent** across files:
+Previously, cell ranges were hardcoded and inconsistent across files. This has been resolved:
 
-| Section | TriggerSetup.gs | Enhanced.gs | BatchProcessor.gs |
-|---------|-----------------|-------------|-------------------|
-| Supervision | `A1:N10` | `A1:N9` | `A1:N9` |
-| Flying Events | `A11:R51` | `A11:R52` | `A11:R52` |
-| Ground Events | **MISSING** | `A54:Q80` | `A54:M80` |
-| Not Available | `A82:N112` | `A82:N113` | `A82:K113` |
-
-**Impact:**
-- TriggerSetup.gs (ACTIVE processor) is **missing Ground Events** range entirely
-- Different files may return different results
-- Hard to update when schedulers add/remove rows
-
-**Solution:** Centralize ranges in Config.gs (not yet implemented in this branch)
+**Solution Implemented:**
+- All section ranges are now centralized in `Config.gs`
+- All processors call `getSectionRanges(sheetDate)` to get correct ranges
+- Supports automatic changeover between legacy and current structures
+- To update ranges, edit `SHEET_STRUCTURES` in Config.gs only
 
 ---
 
 ## 🛠️ **Maintenance Guide**
 
-### When Schedulers Add/Remove Rows
+### When Schedulers Change Sheet Structure
 
-**Current Process (Manual):**
-1. Open each `.gs` file
-2. Find the hardcoded ranges
-3. Update each one individually
+**Process (Config.gs only):**
+1. Open `Config.gs`
+2. Update `SHEET_STRUCTURES.current.sections` with new ranges
+3. Set `STRUCTURE_CHANGEOVER_DATE` to when the new structure takes effect
 4. Deploy new version
 
-**Example:**
+**Example - Adding rows to Flying Events:**
 ```javascript
-// If schedulers add 5 rows to Flying Events:
-// OLD:
-{ range: "A11:R51", name: "Flying Events" }
-
-// NEW:
-{ range: "A11:R56", name: "Flying Events" }
+// In Config.gs, update the 'current' structure:
+current: {
+  sections: {
+    supervision: { range: 'A1:N11' },
+    flying: { range: 'A13:R150' },  // Changed from R134
+    ground: { range: 'A152:M253' }, // Shifted down
+    na: { range: 'A255:K356' }      // Shifted down
+  }
+}
 ```
 
-**Files to Update:**
-- TriggerSetup.gs (line 308-311)
-- Enhanced.gs (lines 272, 340, 413, 479)
-- BatchProcessor.gs (lines 808-811)
+### Adding a New Changeover Date
+
+If the structure changes again in the future:
+1. Rename `current` to something like `jan2026`
+2. Add a new `current` structure with the new ranges
+3. Update the changeover logic in `getActiveSheetStructure()`
 
 ---
 
@@ -528,5 +571,5 @@ batchProcessSchedule()                 [BatchProcessor.gs]
 
 ---
 
-**Last Updated**: December 29, 2025
-**Version**: Stable Schedule (no grouped or academic events)
+**Last Updated**: January 5, 2026
+**Version**: Stable Schedule with configurable sheet structure and changeover date support

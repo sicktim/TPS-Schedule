@@ -252,8 +252,8 @@ function processSheet(sheetInfo, people) {
     results[person.name] = { events: [] };
   });
 
-  // Get section ranges from config
-  const sections = getSectionRanges();
+  // Get section ranges based on sheet date
+  const sections = getSectionRanges(sheetInfo.date);
 
   // Read all sections once
   const allData = {

@@ -80,34 +80,36 @@ const SHEET_STRUCTURES = {
 };
 
 /**
- * Get the active sheet structure based on current date
+ * Get the active sheet structure based on a specific date
+ * @param {string} [sheetDate] - Optional date string (YYYY-MM-DD) for the sheet being processed
  * @returns {Object} The active sheet structure configuration
  */
-function getActiveSheetStructure() {
-  const now = new Date();
-  const todayStr = Utilities.formatDate(now, SEARCH_CONFIG.timezone, 'yyyy-MM-dd');
+function getActiveSheetStructure(sheetDate) {
+  const dateToCheck = sheetDate || Utilities.formatDate(new Date(), SEARCH_CONFIG.timezone, 'yyyy-MM-dd');
 
-  if (todayStr >= STRUCTURE_CHANGEOVER_DATE) {
-    console.log(`Using NEW sheet structure (changeover: ${STRUCTURE_CHANGEOVER_DATE})`);
+  if (dateToCheck >= STRUCTURE_CHANGEOVER_DATE) {
+    console.log(`Using NEW structure for ${dateToCheck}`);
     return SHEET_STRUCTURES.current;
   } else {
-    console.log(`Using LEGACY sheet structure (until: ${STRUCTURE_CHANGEOVER_DATE})`);
+    console.log(`Using LEGACY structure for ${dateToCheck}`);
     return SHEET_STRUCTURES.legacy;
   }
 }
 
 /**
- * Get section ranges for current structure
+ * Get section ranges for a specific date
+ * @param {string} [sheetDate] - Optional date string (YYYY-MM-DD)
  * @returns {Object} Section configuration with ranges
  */
-function getSectionRanges() {
-  return getActiveSheetStructure().sections;
+function getSectionRanges(sheetDate) {
+  return getActiveSheetStructure(sheetDate).sections;
 }
 
 /**
- * Get roster configuration for current structure
+ * Get roster configuration for a specific date
+ * @param {string} [sheetDate] - Optional date string (YYYY-MM-DD)
  * @returns {Object} Roster configuration
  */
-function getRosterConfig() {
-  return getActiveSheetStructure().roster;
+function getRosterConfig(sheetDate) {
+  return getActiveSheetStructure(sheetDate).roster;
 }
