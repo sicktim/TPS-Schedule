@@ -5,25 +5,33 @@
  * Runs every 15 minutes during work hours, automatically skips overnight.
  *
  * TRIGGER CONFIGURATION:
- * - Single trigger: Every 15 minutes
- * - Processes: All 7 days of schedules
- * - Overnight skip: 10 PM - 4 AM Pacific (6 hours to match cache TTL)
+ * - 15-minute trigger: batchProcessSchedule() - skips overnight hours
+ * - Daily 2 AM trigger: overnightCacheRefresh() - keeps cache alive overnight
+ * - Overnight skip: 8 PM - 7 AM Pacific (saves quota)
  *
  * Cache Limits (Google Apps Script):
  * - CacheService: 1MB per entry, 10MB total, 6 hour max TTL
- * - IMPORTANT: Overnight skip must be <= 6 hours or cache expires before refresh
+ * - The 2 AM refresh prevents cache expiration during 11-hour overnight skip
  */
 
 /**
- * Check if current time is in overnight hours (10 PM - 4 AM Pacific)
- * Note: Limited to 6 hours max to match cache TTL (prevents cache expiration gap)
+ * Check if current time is in overnight hours (8 PM - 7 AM Pacific)
  * @returns {boolean} True if overnight hours
  */
 function isOvernightHours() {
   const now = new Date();
   const pacificTimeStr = Utilities.formatDate(now, SEARCH_CONFIG.timezone, 'HH');
   const pacificHour = parseInt(pacificTimeStr);
-  return pacificHour >= 22 || pacificHour < 4;
+  return pacificHour >= 20 || pacificHour < 7;
+}
+
+/**
+ * Overnight cache refresh - run via daily trigger at 2 AM
+ * Keeps cache alive during overnight skip period
+ */
+function overnightCacheRefresh() {
+  console.log('Overnight cache refresh triggered at 2 AM');
+  return batchProcessAll(7);
 }
 
 /**
