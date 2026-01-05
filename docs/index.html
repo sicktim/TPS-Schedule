@@ -806,7 +806,10 @@
                         {/* Showing and Updated on same line */}
                         <div className="flex items-center justify-between text-gray-400">
                             <span>
-                                Showing: <span className="text-blue-400">{config.searchName || 'No name set'}</span>
+                                Showing: <span
+                                    className="text-blue-400 cursor-pointer"
+                                    onClick={() => setShowSettings(true)}
+                                >{config.searchName || 'No name set'}</span>
                                 {isBackendRefreshing && events.length > 0 && (
                                     <span className="ml-2 text-blue-400 animate-pulse">• Refreshing...</span>
                                 )}
