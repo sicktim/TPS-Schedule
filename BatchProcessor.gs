@@ -174,9 +174,9 @@ function batchProcessAll(daysToProcess = 7) {
 
 /**
  * Get all people from the student/staff list
+ * Uses getRosterConfig() to handle structure changes
  */
 function getAllPeople() {
-  const ss = SpreadsheetApp.openById(SEARCH_CONFIG.spreadsheetId);
   const sheets = getSmartSheetRange(7);
 
   if (sheets.length === 0) {
@@ -185,39 +185,38 @@ function getAllPeople() {
 
   const peopleMap = new Map();
   const headerPatterns = [
-    'bravo students', 'stc students', 'alpha students',
-    'staff ip', 'stc staff', 'attached', 'support'
+    'bravo students', 'stc students', 'alpha students', 'ftc-b', 'stc-b', 'ftc-a', 'stc-a',
+    'staff ip', 'stc staff', 'staff stc', 'attached', 'support', 'ifte', 'icso', 'future'
   ];
+
+  const rosterConfig = getRosterConfig();
 
   sheets.forEach(sheetInfo => {
     const sheet = sheetInfo.sheet;
-    // Expanded range to include more columns (A=0, E=4, I=8, M=12, Q=16)
-    const data = sheet.getRange('A120:R168').getDisplayValues();
 
-    const columns = [
-      { col: 0, name: 'Bravo Students', type: 'student' },    // Column A
-      { col: 4, name: 'Alpha Students', type: 'student' },    // Column E
-      { col: 8, name: 'Staff IP', type: 'staff' },            // Column I
-      { col: 12, name: 'Staff IFTE/ICSO', type: 'staff' },    // Column M
-      { col: 16, name: 'Attached/Support', type: 'staff' }    // Column Q
-    ];
+    // Handle legacy structure (single range with columns)
+    if (rosterConfig.range && rosterConfig.columns) {
+      const data = sheet.getRange(rosterConfig.range).getDisplayValues();
 
-    columns.forEach(colDef => {
-      data.forEach(row => {
-        const name = row[colDef.col] ? row[colDef.col].trim() : '';
-
-        if (!name || name === '.' || name === '' || name.length < 2) return;
-
-        const nameLower = name.toLowerCase();
-        if (['false', 'true', 'yes', 'no', 'n/a', 'tbd'].includes(nameLower)) return;
-        if (/^\d+$/.test(name)) return;
-        if (headerPatterns.some(p => nameLower.includes(p))) return;
-
-        if (!peopleMap.has(name)) {
-          peopleMap.set(name, { name, class: colDef.name, type: colDef.type });
-        }
+      rosterConfig.columns.forEach(colDef => {
+        data.forEach(row => {
+          const name = row[colDef.col] ? row[colDef.col].trim() : '';
+          addPersonToMap(name, colDef.name, colDef.type, peopleMap, headerPatterns);
+        });
       });
-    });
+    }
+
+    // Handle new structure (multiple ranges)
+    if (rosterConfig.ranges) {
+      rosterConfig.ranges.forEach(rangeConfig => {
+        const data = sheet.getRange(rangeConfig.range).getDisplayValues();
+
+        data.forEach(row => {
+          const name = row[rangeConfig.nameCol] ? row[rangeConfig.nameCol].trim() : '';
+          addPersonToMap(name, rangeConfig.name, rangeConfig.type, peopleMap, headerPatterns);
+        });
+      });
+    }
   });
 
   const people = Array.from(peopleMap.values());
@@ -226,7 +225,24 @@ function getAllPeople() {
 }
 
 /**
+ * Helper to add a person to the map with validation
+ */
+function addPersonToMap(name, className, type, peopleMap, headerPatterns) {
+  if (!name || name === '.' || name === '' || name.length < 2) return;
+
+  const nameLower = name.toLowerCase();
+  if (['false', 'true', 'yes', 'no', 'n/a', 'tbd'].includes(nameLower)) return;
+  if (/^\d+$/.test(name)) return;
+  if (headerPatterns.some(p => nameLower.includes(p))) return;
+
+  if (!peopleMap.has(name)) {
+    peopleMap.set(name, { name, class: className, type: type });
+  }
+}
+
+/**
  * Process a single sheet for all people
+ * Uses getSectionRanges() to handle structure changes
  */
 function processSheet(sheetInfo, people) {
   const sheet = sheetInfo.sheet;
@@ -236,12 +252,15 @@ function processSheet(sheetInfo, people) {
     results[person.name] = { events: [] };
   });
 
+  // Get section ranges from config
+  const sections = getSectionRanges();
+
   // Read all sections once
   const allData = {
-    supervision: sheet.getRange('A1:N9').getDisplayValues(),
-    flying: sheet.getRange('A11:R52').getDisplayValues(),
-    ground: sheet.getRange('A54:M80').getDisplayValues(),
-    na: sheet.getRange('A82:K113').getDisplayValues()
+    supervision: sheet.getRange(sections.supervision.range).getDisplayValues(),
+    flying: sheet.getRange(sections.flying.range).getDisplayValues(),
+    ground: sheet.getRange(sections.ground.range).getDisplayValues(),
+    na: sheet.getRange(sections.na.range).getDisplayValues()
   };
 
   // Process each person

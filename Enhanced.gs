@@ -4,11 +4,8 @@
  * Advanced parsing of squadron schedule with detailed metadata.
  * Returns structured JSON with all event details.
  *
- * Sections:
- *   - Supervision:    Rows 1-9   (Multiple time slots per duty)
- *   - Flying Events:  Rows 11-52 (Model, times, crew, status)
- *   - Ground Events:  Rows 54-80 (Event, times, people, status)
- *   - NAs:            Rows 82-113 (Reason, times, people)
+ * Section ranges are defined in Config.gs and support automatic
+ * changeover on STRUCTURE_CHANGEOVER_DATE.
  */
 
 /**
@@ -110,6 +107,7 @@ function getEventsForWidget_Enhanced(searchName, daysAhead) {
 
 /**
  * Enhanced parsing of all sheet sections
+ * Uses getSectionRanges() to handle structure changes
  *
  * @param {Spreadsheet} spreadsheet - Pre-opened spreadsheet
  * @param {string} sheetName - Sheet tab name
@@ -123,22 +121,25 @@ function searchNameInSheet_Enhanced(spreadsheet, sheetName, searchName) {
     return [];
   }
 
+  // Get section ranges from config
+  const sections = getSectionRanges();
+
   const matches = [];
 
-  matches.push(...parseSupervisionSection(sheet, searchName));
-  matches.push(...parseFlyingEventsEnhanced(sheet, searchName));
-  matches.push(...parseGroundEventsEnhanced(sheet, searchName));
-  matches.push(...parseNAsEnhanced(sheet, searchName));
+  matches.push(...parseSupervisionSection(sheet, searchName, sections.supervision.range));
+  matches.push(...parseFlyingEventsEnhanced(sheet, searchName, sections.flying.range));
+  matches.push(...parseGroundEventsEnhanced(sheet, searchName, sections.ground.range));
+  matches.push(...parseNAsEnhanced(sheet, searchName, sections.na.range));
 
   return matches;
 }
 
 /**
- * Parse Supervision section (rows 1-9)
+ * Parse Supervision section
  */
-function parseSupervisionSection(sheet, searchName) {
+function parseSupervisionSection(sheet, searchName, range) {
   const matches = [];
-  const values = sheet.getRange("A1:N9").getDisplayValues();
+  const values = sheet.getRange(range).getDisplayValues();
 
   values.forEach(row => {
     const dutyType = row[0];
@@ -177,11 +178,11 @@ function parseSupervisionSection(sheet, searchName) {
 }
 
 /**
- * Parse Flying Events (rows 11-52)
+ * Parse Flying Events
  */
-function parseFlyingEventsEnhanced(sheet, searchName) {
+function parseFlyingEventsEnhanced(sheet, searchName, range) {
   const matches = [];
-  const values = sheet.getRange("A11:R52").getDisplayValues();
+  const values = sheet.getRange(range).getDisplayValues();
 
   values.forEach(row => {
     const rowText = row.join('|').toLowerCase();
@@ -230,11 +231,11 @@ function parseFlyingEventsEnhanced(sheet, searchName) {
 }
 
 /**
- * Parse Ground Events (rows 54-80)
+ * Parse Ground Events
  */
-function parseGroundEventsEnhanced(sheet, searchName) {
+function parseGroundEventsEnhanced(sheet, searchName, range) {
   const matches = [];
-  const values = sheet.getRange("A54:Q80").getDisplayValues();
+  const values = sheet.getRange(range).getDisplayValues();
 
   values.forEach(row => {
     const rowText = row.join('|').toLowerCase();
@@ -277,11 +278,11 @@ function parseGroundEventsEnhanced(sheet, searchName) {
 }
 
 /**
- * Parse NAs / Non-Availabilities (rows 82-113)
+ * Parse NAs / Non-Availabilities
  */
-function parseNAsEnhanced(sheet, searchName) {
+function parseNAsEnhanced(sheet, searchName, range) {
   const matches = [];
-  const values = sheet.getRange("A82:N113").getDisplayValues();
+  const values = sheet.getRange(range).getDisplayValues();
 
   values.forEach(row => {
     const rowText = row.join('|').toLowerCase();

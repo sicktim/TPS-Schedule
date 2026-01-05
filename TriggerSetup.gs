@@ -4,11 +4,8 @@
  * Fetches squadron events from Google Sheets whiteboard.
  * Returns filtered results as JSON for the web widget.
  *
- * Sections parsed:
- *   - Supervision (rows 1-10)
- *   - Flying Events (rows 11-51)
- *   - Ground Events (rows 55-79)
- *   - Not Available (rows 82-112)
+ * Section ranges are defined in Config.gs and support automatic
+ * changeover on STRUCTURE_CHANGEOVER_DATE.
  */
 
 /**
@@ -98,6 +95,7 @@ function getEventsForWidget(searchName, daysAhead) {
 
 /**
  * Search for a name in a specific sheet
+ * Uses getSectionRanges() to handle structure changes
  *
  * @param {Spreadsheet} spreadsheet - Pre-opened spreadsheet
  * @param {string} sheetName - Sheet tab name
@@ -112,11 +110,14 @@ function searchNameInSheet(spreadsheet, sheetName, searchName) {
     return [];
   }
 
+  // Get section ranges from config
+  const sections = getSectionRanges();
+
   const searchRanges = [
-    { range: "A1:N10",   name: "Supervision" },
-    { range: "A11:R51",  name: "Flying Events" },
-    { range: "A55:Q79",  name: "Ground Events" },
-    { range: "A82:N112", name: "Not Available" }
+    { range: sections.supervision.range, name: "Supervision" },
+    { range: sections.flying.range,      name: "Flying Events" },
+    { range: sections.ground.range,      name: "Ground Events" },
+    { range: sections.na.range,          name: "Not Available" }
   ];
 
   const rangeAddresses = searchRanges.map(sr => sr.range);
