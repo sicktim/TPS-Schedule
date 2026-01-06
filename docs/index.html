@@ -676,7 +676,7 @@
 
                 const interval = setInterval(() => {
                     fetchSchedule(config.searchName);
-                }, .75 * 60 * 1000);
+                }, 15 * 60 * 1000);
 
                 return () => {
                     clearInterval(interval);
@@ -839,7 +839,7 @@
                             const pacificTimeStr = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
                             const pacificDate = new Date(pacificTimeStr);
                             const pacificHour = pacificDate.getHours();
-                            const isOvernightHours = pacificHour >= 20 || pacificHour < 5;
+                            const isOvernightHours = pacificHour >= 20 || pacificHour < 7;
 
                             // Stale if >25 min old during work hours (not overnight)
                             const isStale = !isOvernightHours && minutesOld > 25;
@@ -854,7 +854,7 @@
                                         <div className="flex-1">
                                             <div className="text-yellow-400 font-medium">Data may be stale</div>
                                             <div className="text-gray-400 text-xs mt-1">
-                                                Last updated {minutesOld} minutes ago. Expected update every 15 minutes. Updates once overnight between 8pm and 7am.
+                                                Last updated {minutesOld} minutes ago. Expected update every 15 minutes. Exception: Updates once overnight between 8pm and 7am.
                                             </div>
                                         </div>
                                     </div>
