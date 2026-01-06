@@ -671,6 +671,7 @@
             };
 
             // Initial fetch and auto-refresh
+            // Re-runs when searchName changes to use the new name
             useEffect(() => {
                 fetchSchedule(config.searchName);
 
@@ -684,7 +685,7 @@
                         clearTimeout(debounceTimerRef.current);
                     }
                 };
-            }, []);
+            }, [config.searchName]);
 
             // Manual refresh
             const handleRefresh = () => {
