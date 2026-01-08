@@ -94,6 +94,49 @@
             position: relative;
         }
 
+        /* Multi-select dropdown */
+        .multi-select {
+            position: relative;
+        }
+
+        .multi-select-trigger {
+            min-width: 200px;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .multi-select-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 0.5rem;
+            margin-top: 4px;
+            z-index: 50;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .multi-select-option {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .multi-select-option:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .multi-select-option input {
+            margin-right: 8px;
+        }
+
         /* Custom scrollbar */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
@@ -116,35 +159,102 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <script type="text/babel">
-        const { useState, useEffect, useCallback } = React;
+        const { useState, useEffect, useCallback, useRef } = React;
 
         const API_URL = 'https://script.google.com/macros/s/AKfycbyS4XcUEFL8P2wDTUywJc4s_kAAIfss0JHmShgdNVYWguDItWZsc9HWaQfiv4nZPt0N/exec';
 
-        // Class/group definitions
-        const CLASS_OPTIONS = [
-            { value: 'class-a', label: 'Class 26A (FTC + STC)', filters: ['FTC-A', 'STC-A'] },
-            { value: 'class-b', label: 'Class 26B (FTC + STC)', filters: ['FTC-B', 'STC-B'] },
-            { value: 'ftc-a', label: '26A - FTC', filters: ['FTC-A'] },
-            { value: 'stc-a', label: '26A - STC', filters: ['STC-A'] },
-            { value: 'ftc-b', label: '26B - FTC', filters: ['FTC-B'] },
-            { value: 'stc-b', label: '26B - STC', filters: ['STC-B'] },
-            { value: 'staff-ip', label: 'Staff IP', filters: ['Staff IP'] },
-            { value: 'staff-stc', label: 'Staff STC', filters: ['Staff STC'] },
-            { value: 'staff-ifte', label: 'Staff IFTE/ICSO', filters: ['Staff IFTE/ICSO'] },
-            { value: 'attached', label: 'Attached/Support', filters: ['Attached/Support'] },
-            { value: 'all-staff', label: 'All Staff', filters: ['Staff IP', 'Staff STC', 'Staff IFTE/ICSO', 'Attached/Support'] },
-        ];
-
-        // Day names
-        const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        // Day abbreviations
         const DAY_ABBREV = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
+        // Multi-select dropdown component
+        function MultiSelect({ options, selected, onChange, placeholder }) {
+            const [isOpen, setIsOpen] = useState(false);
+            const dropdownRef = useRef(null);
+
+            // Close dropdown when clicking outside
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                        setIsOpen(false);
+                    }
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            const toggleOption = (option) => {
+                if (selected.includes(option)) {
+                    onChange(selected.filter(s => s !== option));
+                } else {
+                    onChange([...selected, option]);
+                }
+            };
+
+            const selectAll = () => {
+                onChange([...options]);
+            };
+
+            const clearAll = () => {
+                onChange([]);
+            };
+
+            const displayText = selected.length === 0
+                ? placeholder
+                : selected.length === options.length
+                    ? 'All Selected'
+                    : `${selected.length} selected`;
+
+            return (
+                <div className="multi-select" ref={dropdownRef}>
+                    <button
+                        type="button"
+                        onClick={() => setIsOpen(!isOpen)}
+                        className="multi-select-trigger bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                    >
+                        <span>{displayText}</span>
+                        <svg className={`w-4 h-4 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+
+                    {isOpen && (
+                        <div className="multi-select-dropdown">
+                            <div className="flex gap-2 p-2 border-b border-gray-700">
+                                <button
+                                    onClick={selectAll}
+                                    className="text-xs px-2 py-1 bg-blue-600 rounded hover:bg-blue-700"
+                                >
+                                    Select All
+                                </button>
+                                <button
+                                    onClick={clearAll}
+                                    className="text-xs px-2 py-1 bg-gray-600 rounded hover:bg-gray-700"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                            {options.map(option => (
+                                <label key={option} className="multi-select-option">
+                                    <input
+                                        type="checkbox"
+                                        checked={selected.includes(option)}
+                                        onChange={() => toggleOption(option)}
+                                        className="rounded"
+                                    />
+                                    <span>{option}</span>
+                                </label>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         function App() {
-            const [selectedClass, setSelectedClass] = useState('class-a');
-            const [people, setPeople] = useState([]);
-            const [schedules, setSchedules] = useState({});
+            const [allData, setAllData] = useState(null);
+            const [categories, setCategories] = useState([]);
+            const [selectedCategories, setSelectedCategories] = useState([]);
             const [loading, setLoading] = useState(true);
-            const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 0 });
             const [error, setError] = useState(null);
             const [weekDates, setWeekDates] = useState([]);
             const [cacheMetadata, setCacheMetadata] = useState(null);
@@ -172,106 +282,69 @@
                 return dates;
             }, []);
 
-            // Fetch all people from cache
-            const fetchPeopleList = useCallback(async () => {
-                try {
-                    const response = await fetch(`${API_URL}?viewCache=true`);
-                    const data = await response.json();
-
-                    if (data.cachedPeople) {
-                        setCacheMetadata(data.metadata);
-                        return data.cachedPeople;
-                    }
-                    return [];
-                } catch (err) {
-                    console.error('Error fetching people list:', err);
-                    throw err;
-                }
-            }, []);
-
-            // Fetch individual schedule
-            const fetchPersonSchedule = useCallback(async (name) => {
-                try {
-                    const response = await fetch(`${API_URL}?viewCache=person&name=${encodeURIComponent(name)}`);
-                    const data = await response.json();
-                    return data.data;
-                } catch (err) {
-                    console.error(`Error fetching schedule for ${name}:`, err);
-                    return null;
-                }
-            }, []);
-
-            // Load data for selected class
-            const loadClassData = useCallback(async () => {
+            // Fetch all data in bulk
+            const fetchBulkData = useCallback(async () => {
                 setLoading(true);
                 setError(null);
-                setSchedules({});
 
                 try {
                     const dates = getWeekDates();
                     setWeekDates(dates);
 
-                    // Get all cached people
-                    const allPeople = await fetchPeopleList();
+                    const response = await fetch(`${API_URL}?viewCache=bulk`);
+                    const data = await response.json();
 
-                    // Filter by selected class
-                    const classOption = CLASS_OPTIONS.find(c => c.value === selectedClass);
-                    const filteredPeople = allPeople.filter(p =>
-                        classOption.filters.some(f => p.class === f || p.type === f)
-                    );
-
-                    // Sort alphabetically
-                    filteredPeople.sort((a, b) => a.name.localeCompare(b.name));
-                    setPeople(filteredPeople);
-
-                    if (filteredPeople.length === 0) {
-                        setLoading(false);
-                        return;
+                    if (data.error) {
+                        throw new Error(data.message || 'Failed to fetch data');
                     }
 
-                    // Fetch schedules for each person
-                    setLoadingProgress({ current: 0, total: filteredPeople.length });
-                    const scheduleData = {};
+                    setAllData(data);
+                    setCacheMetadata(data.metadata);
 
-                    for (let i = 0; i < filteredPeople.length; i++) {
-                        const person = filteredPeople[i];
-                        setLoadingProgress({ current: i + 1, total: filteredPeople.length });
-
-                        const schedule = await fetchPersonSchedule(person.name);
-                        if (schedule && schedule.events) {
-                            scheduleData[person.name] = schedule.events;
+                    // Set categories from data
+                    if (data.categories && data.categories.length > 0) {
+                        setCategories(data.categories);
+                        // Default: select first category if none selected
+                        if (selectedCategories.length === 0) {
+                            setSelectedCategories([data.categories[0]]);
                         }
                     }
-
-                    setSchedules(scheduleData);
                 } catch (err) {
+                    console.error('Error fetching bulk data:', err);
                     setError(err.message);
                 } finally {
                     setLoading(false);
                 }
-            }, [selectedClass, getWeekDates, fetchPeopleList, fetchPersonSchedule]);
+            }, [getWeekDates]);
 
-            // Load data on mount and class change
+            // Load data on mount
             useEffect(() => {
-                loadClassData();
-            }, [selectedClass]);
+                fetchBulkData();
+            }, []);
+
+            // Get filtered and sorted people
+            const getFilteredPeople = useCallback(() => {
+                if (!allData || !allData.schedules) return [];
+
+                return allData.schedules
+                    .filter(person => selectedCategories.includes(person.category))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+            }, [allData, selectedCategories]);
 
             // Get events for a person on a specific date
-            const getEventsForDate = (personName, dateStr) => {
-                const personEvents = schedules[personName];
-                if (!personEvents) return [];
+            const getEventsForDate = (person, dateStr) => {
+                if (!person.events) return [];
 
-                // Handle both flat and grouped event structures
                 let events = [];
 
-                if (Array.isArray(personEvents)) {
-                    if (personEvents.length > 0 && personEvents[0].events) {
+                if (Array.isArray(person.events)) {
+                    if (person.events.length > 0 && person.events[0].events) {
                         // Grouped by day: [{date, dayName, events: [...]}]
-                        const dayData = personEvents.find(d => d.date === dateStr);
+                        const dayData = person.events.find(d => d.date === dateStr);
                         events = dayData ? dayData.events : [];
                     } else {
                         // Flat array: [{date, time, ...}]
-                        events = personEvents.filter(e => e.date === dateStr);
+                        events = person.events.filter(e => e.date === dateStr);
                     }
                 }
 
@@ -318,6 +391,8 @@
                 );
             };
 
+            const filteredPeople = getFilteredPeople();
+
             return (
                 <div className="max-w-full mx-auto">
                     {/* Header */}
@@ -328,19 +403,16 @@
                                 <p className="text-gray-400 text-sm">Weekly Gantt View</p>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                                <select
-                                    value={selectedClass}
-                                    onChange={(e) => setSelectedClass(e.target.value)}
-                                    className="bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
-                                >
-                                    {CLASS_OPTIONS.map(opt => (
-                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                    ))}
-                                </select>
+                            <div className="flex flex-wrap items-center gap-4">
+                                <MultiSelect
+                                    options={categories}
+                                    selected={selectedCategories}
+                                    onChange={setSelectedCategories}
+                                    placeholder="Select categories..."
+                                />
 
                                 <button
-                                    onClick={loadClassData}
+                                    onClick={fetchBulkData}
                                     disabled={loading}
                                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
                                 >
@@ -366,6 +438,17 @@
                         {cacheMetadata && (
                             <div className="mt-2 text-xs text-gray-500">
                                 Cache updated: {new Date(cacheMetadata.lastRun).toLocaleString()}
+                                {allData && ` | ${allData.peopleCount} people loaded`}
+                            </div>
+                        )}
+
+                        {selectedCategories.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {selectedCategories.map(cat => (
+                                    <span key={cat} className="text-xs bg-blue-600/30 px-2 py-1 rounded">
+                                        {cat}
+                                    </span>
+                                ))}
                             </div>
                         )}
                     </div>
@@ -374,9 +457,7 @@
                     {loading && (
                         <div className="glass-card rounded-xl p-8 text-center">
                             <div className="spinner mx-auto mb-4"></div>
-                            <p className="text-gray-400">
-                                Loading schedules... {loadingProgress.current}/{loadingProgress.total}
-                            </p>
+                            <p className="text-gray-400">Loading all schedules...</p>
                         </div>
                     )}
 
@@ -387,15 +468,22 @@
                         </div>
                     )}
 
-                    {/* No data state */}
-                    {!loading && !error && people.length === 0 && (
+                    {/* No selection state */}
+                    {!loading && !error && selectedCategories.length === 0 && (
                         <div className="glass-card rounded-xl p-8 text-center">
-                            <p className="text-gray-400">No people found for selected class</p>
+                            <p className="text-gray-400">Select one or more categories to view schedules</p>
+                        </div>
+                    )}
+
+                    {/* No data state */}
+                    {!loading && !error && selectedCategories.length > 0 && filteredPeople.length === 0 && (
+                        <div className="glass-card rounded-xl p-8 text-center">
+                            <p className="text-gray-400">No people found for selected categories</p>
                         </div>
                     )}
 
                     {/* Gantt Chart */}
-                    {!loading && !error && people.length > 0 && (
+                    {!loading && !error && filteredPeople.length > 0 && (
                         <div className="glass-card rounded-xl overflow-hidden">
                             <div className="overflow-x-auto">
                                 <div className="gantt-grid" style={{ minWidth: '900px' }}>
@@ -408,13 +496,13 @@
                                     ))}
 
                                     {/* Data rows */}
-                                    {people.map((person, rowIdx) => (
+                                    {filteredPeople.map((person) => (
                                         <React.Fragment key={person.name}>
                                             <div className="gantt-name">
                                                 {person.name}
                                             </div>
                                             {weekDates.map((day, colIdx) => {
-                                                const events = getEventsForDate(person.name, day.dateStr);
+                                                const events = getEventsForDate(person, day.dateStr);
                                                 return (
                                                     <div key={colIdx} className="gantt-cell">
                                                         {events.map((event, eventIdx) => (
@@ -431,7 +519,7 @@
                     )}
 
                     {/* Legend */}
-                    {!loading && people.length > 0 && (
+                    {!loading && filteredPeople.length > 0 && (
                         <div className="glass-card rounded-xl p-4 mt-4 no-print">
                             <div className="flex flex-wrap gap-4 text-sm">
                                 <div className="flex items-center gap-2">

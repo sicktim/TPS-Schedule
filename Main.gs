@@ -16,8 +16,9 @@ const ACTIVE_VERSION = "SIMPLIFIED";
  *   ?days=5              - Number of days to search
  *   ?version=simplified  - Override version (simplified/enhanced)
  *   ?forceRefresh=true   - Trigger batch cache refresh
- *   ?viewCache=true      - View all cached data as JSON
+ *   ?viewCache=true      - View all cached data summary
  *   ?viewCache=person    - View cache for specific person (use with ?name=)
+ *   ?viewCache=bulk      - View ALL cached schedules (for class view)
  *
  * @param {Object} e - Google Apps Script event object
  * @returns {TextOutput} JSON response
@@ -64,7 +65,7 @@ function doGet(e) {
 /**
  * Handle view cache request - returns cached data as JSON
  *
- * @param {string} mode - 'true' for all cache, 'person' for specific person
+ * @param {string} mode - 'true' for summary, 'person' for specific person, 'bulk' for all data
  * @param {string} name - Person name (optional, used with mode='person')
  */
 function handleViewCache(mode, name) {
@@ -82,7 +83,12 @@ function handleViewCache(mode, name) {
     });
   }
 
-  // View all cached data
+  // Bulk mode - return ALL cached schedules with full data (for class view)
+  if (mode === 'bulk') {
+    return handleViewCacheBulk();
+  }
+
+  // View all cached data (summary only)
   const batchMetadata = cache.get('batch_metadata');
   const metadata = batchMetadata ? JSON.parse(batchMetadata) : null;
 
@@ -126,7 +132,63 @@ function handleViewCache(mode, name) {
     metadata: metadata,
     cachedPeopleCount: cachedPeople.length,
     cachedPeople: cachedPeople,
-    hint: 'Use ?viewCache=person&name=PersonName to view full cache for a specific person'
+    hint: 'Use ?viewCache=person&name=PersonName to view full cache for a specific person, or ?viewCache=bulk for all data'
+  });
+}
+
+/**
+ * Handle bulk cache request - returns ALL cached schedules with full event data
+ * Used by class view to fetch everything in one request
+ */
+function handleViewCacheBulk() {
+  const cache = CacheService.getScriptCache();
+  const batchMetadata = cache.get('batch_metadata');
+  const metadata = batchMetadata ? JSON.parse(batchMetadata) : null;
+  const peopleListJson = cache.get('batch_people_list');
+
+  if (!peopleListJson) {
+    return createJsonResponse({
+      viewCache: true,
+      mode: 'bulk',
+      error: true,
+      message: 'No cached data available'
+    });
+  }
+
+  const peopleNames = JSON.parse(peopleListJson);
+  const schedules = [];
+  const categories = new Set();
+
+  peopleNames.forEach(personName => {
+    const personCache = cache.get(`schedule_${personName}`);
+    if (personCache) {
+      const parsed = JSON.parse(personCache);
+      const category = parsed.class || parsed.type || 'Unknown';
+      categories.add(category);
+
+      schedules.push({
+        name: personName,
+        category: category,
+        events: parsed.events || []
+      });
+    }
+  });
+
+  // Sort schedules alphabetically by name
+  schedules.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Convert categories to sorted array, filtering out "Future" categories unless renamed
+  const categoryList = Array.from(categories)
+    .filter(cat => !cat.startsWith('Future Category'))
+    .sort();
+
+  return createJsonResponse({
+    viewCache: true,
+    mode: 'bulk',
+    metadata: metadata,
+    categories: categoryList,
+    peopleCount: schedules.length,
+    schedules: schedules
   });
 }
 
