@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TPS Class Schedule</title>
+    <meta name="theme-color" content="#1a1a2e">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+        * {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+            min-height: 100vh;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Event type colors */
+        .event-flying { background: rgba(16, 185, 129, 0.8); border-color: #10b981; }
+        .event-ground { background: rgba(245, 158, 11, 0.8); border-color: #f59e0b; }
+        .event-na { background: rgba(239, 68, 68, 0.8); border-color: #ef4444; }
+        .event-supervision { background: rgba(139, 92, 246, 0.8); border-color: #8b5cf6; }
+        .event-other { background: rgba(59, 130, 246, 0.8); border-color: #3b82f6; }
+
+        .spinner {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Gantt grid */
+        .gantt-grid {
+            display: grid;
+            grid-template-columns: 140px repeat(5, 1fr);
+            gap: 1px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .gantt-cell {
+            background: rgba(15, 15, 35, 0.9);
+            min-height: 50px;
+            padding: 4px;
+            position: relative;
+        }
+
+        .gantt-header {
+            background: rgba(30, 30, 60, 0.9);
+            font-weight: 600;
+            text-align: center;
+            padding: 12px 8px;
+        }
+
+        .gantt-name {
+            background: rgba(30, 30, 60, 0.9);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            font-size: 0.75rem;
+        }
+
+        .event-block {
+            border-radius: 3px;
+            padding: 2px 4px;
+            margin: 1px 0;
+            font-size: 0.65rem;
+            line-height: 1.2;
+            border-left: 2px solid;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .event-block:hover {
+            white-space: normal;
+            z-index: 10;
+            position: relative;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+        /* Print styles */
+        @media print {
+            body { background: white; }
+            .glass-card { background: white; border: 1px solid #ccc; }
+            .gantt-cell, .gantt-header, .gantt-name { background: white; border: 1px solid #ddd; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body class="text-gray-100 p-4">
+    <div id="root"></div>
+
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        const API_URL = 'https://script.google.com/macros/s/AKfycbyS4XcUEFL8P2wDTUywJc4s_kAAIfss0JHmShgdNVYWguDItWZsc9HWaQfiv4nZPt0N/exec';
+
+        // Class/group definitions
+        const CLASS_OPTIONS = [
+            { value: 'class-a', label: 'Class 26A (FTC + STC)', filters: ['FTC-A', 'STC-A'] },
+            { value: 'class-b', label: 'Class 26B (FTC + STC)', filters: ['FTC-B', 'STC-B'] },
+            { value: 'ftc-a', label: '26A - FTC', filters: ['FTC-A'] },
+            { value: 'stc-a', label: '26A - STC', filters: ['STC-A'] },
+            { value: 'ftc-b', label: '26B - FTC', filters: ['FTC-B'] },
+            { value: 'stc-b', label: '26B - STC', filters: ['STC-B'] },
+            { value: 'staff-ip', label: 'Staff IP', filters: ['Staff IP'] },
+            { value: 'staff-stc', label: 'Staff STC', filters: ['Staff STC'] },
+            { value: 'staff-ifte', label: 'Staff IFTE/ICSO', filters: ['Staff IFTE/ICSO'] },
+            { value: 'attached', label: 'Attached/Support', filters: ['Attached/Support'] },
+            { value: 'all-staff', label: 'All Staff', filters: ['Staff IP', 'Staff STC', 'Staff IFTE/ICSO', 'Attached/Support'] },
+        ];
+
+        // Day names
+        const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        const DAY_ABBREV = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+
+        function App() {
+            const [selectedClass, setSelectedClass] = useState('class-a');
+            const [people, setPeople] = useState([]);
+            const [schedules, setSchedules] = useState({});
+            const [loading, setLoading] = useState(true);
+            const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 0 });
+            const [error, setError] = useState(null);
+            const [weekDates, setWeekDates] = useState([]);
+            const [cacheMetadata, setCacheMetadata] = useState(null);
+
+            // Get current week's dates (Mon-Fri)
+            const getWeekDates = useCallback(() => {
+                const now = new Date();
+                const dayOfWeek = now.getDay();
+                const monday = new Date(now);
+
+                // Adjust to Monday (if Sunday, go back 6 days; otherwise go back to previous Monday)
+                const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                monday.setDate(now.getDate() - daysFromMonday);
+
+                const dates = [];
+                for (let i = 0; i < 5; i++) {
+                    const date = new Date(monday);
+                    date.setDate(monday.getDate() + i);
+                    dates.push({
+                        date: date,
+                        dateStr: date.toISOString().split('T')[0],
+                        display: `${DAY_ABBREV[i]} ${date.getMonth() + 1}/${date.getDate()}`
+                    });
+                }
+                return dates;
+            }, []);
+
+            // Fetch all people from cache
+            const fetchPeopleList = useCallback(async () => {
+                try {
+                    const response = await fetch(`${API_URL}?viewCache=true`);
+                    const data = await response.json();
+
+                    if (data.cachedPeople) {
+                        setCacheMetadata(data.metadata);
+                        return data.cachedPeople;
+                    }
+                    return [];
+                } catch (err) {
+                    console.error('Error fetching people list:', err);
+                    throw err;
+                }
+            }, []);
+
+            // Fetch individual schedule
+            const fetchPersonSchedule = useCallback(async (name) => {
+                try {
+                    const response = await fetch(`${API_URL}?viewCache=person&name=${encodeURIComponent(name)}`);
+                    const data = await response.json();
+                    return data.data;
+                } catch (err) {
+                    console.error(`Error fetching schedule for ${name}:`, err);
+                    return null;
+                }
+            }, []);
+
+            // Load data for selected class
+            const loadClassData = useCallback(async () => {
+                setLoading(true);
+                setError(null);
+                setSchedules({});
+
+                try {
+                    const dates = getWeekDates();
+                    setWeekDates(dates);
+
+                    // Get all cached people
+                    const allPeople = await fetchPeopleList();
+
+                    // Filter by selected class
+                    const classOption = CLASS_OPTIONS.find(c => c.value === selectedClass);
+                    const filteredPeople = allPeople.filter(p =>
+                        classOption.filters.some(f => p.class === f || p.type === f)
+                    );
+
+                    // Sort alphabetically
+                    filteredPeople.sort((a, b) => a.name.localeCompare(b.name));
+                    setPeople(filteredPeople);
+
+                    if (filteredPeople.length === 0) {
+                        setLoading(false);
+                        return;
+                    }
+
+                    // Fetch schedules for each person
+                    setLoadingProgress({ current: 0, total: filteredPeople.length });
+                    const scheduleData = {};
+
+                    for (let i = 0; i < filteredPeople.length; i++) {
+                        const person = filteredPeople[i];
+                        setLoadingProgress({ current: i + 1, total: filteredPeople.length });
+
+                        const schedule = await fetchPersonSchedule(person.name);
+                        if (schedule && schedule.events) {
+                            scheduleData[person.name] = schedule.events;
+                        }
+                    }
+
+                    setSchedules(scheduleData);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            }, [selectedClass, getWeekDates, fetchPeopleList, fetchPersonSchedule]);
+
+            // Load data on mount and class change
+            useEffect(() => {
+                loadClassData();
+            }, [selectedClass]);
+
+            // Get events for a person on a specific date
+            const getEventsForDate = (personName, dateStr) => {
+                const personEvents = schedules[personName];
+                if (!personEvents) return [];
+
+                // Handle both flat and grouped event structures
+                let events = [];
+
+                if (Array.isArray(personEvents)) {
+                    if (personEvents.length > 0 && personEvents[0].events) {
+                        // Grouped by day: [{date, dayName, events: [...]}]
+                        const dayData = personEvents.find(d => d.date === dateStr);
+                        events = dayData ? dayData.events : [];
+                    } else {
+                        // Flat array: [{date, time, ...}]
+                        events = personEvents.filter(e => e.date === dateStr);
+                    }
+                }
+
+                // Sort by time
+                events.sort((a, b) => {
+                    const timeA = a.time || a.startTime || '';
+                    const timeB = b.time || b.startTime || '';
+                    return timeA.localeCompare(timeB);
+                });
+
+                return events;
+            };
+
+            // Get event type class
+            const getEventTypeClass = (event) => {
+                const type = (event.type || event.eventType || '').toLowerCase();
+                if (type.includes('fly') || type.includes('flight')) return 'event-flying';
+                if (type.includes('ground')) return 'event-ground';
+                if (type.includes('na') || type.includes('unavail')) return 'event-na';
+                if (type.includes('super') || type.includes('supe')) return 'event-supervision';
+                return 'event-other';
+            };
+
+            // Format event display
+            const formatEvent = (event) => {
+                const time = event.time || event.startTime || '';
+                const title = event.title || event.event || event.description || '';
+                const shortTime = time.replace(':00', '').replace(' ', '');
+                return `${shortTime} ${title}`;
+            };
+
+            // Render event block
+            const EventBlock = ({ event }) => {
+                const typeClass = getEventTypeClass(event);
+                const display = formatEvent(event);
+
+                return (
+                    <div
+                        className={`event-block ${typeClass}`}
+                        title={`${event.time || ''} - ${event.title || event.event || ''}\n${event.location || ''}`}
+                    >
+                        {display}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="max-w-full mx-auto">
+                    {/* Header */}
+                    <div className="glass-card rounded-xl p-4 mb-4 no-print">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                            <div>
+                                <h1 className="text-xl font-semibold text-white">TPS Class Schedule</h1>
+                                <p className="text-gray-400 text-sm">Weekly Gantt View</p>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                <select
+                                    value={selectedClass}
+                                    onChange={(e) => setSelectedClass(e.target.value)}
+                                    className="bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                                >
+                                    {CLASS_OPTIONS.map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+
+                                <button
+                                    onClick={loadClassData}
+                                    disabled={loading}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                    {loading ? 'Loading...' : 'Refresh'}
+                                </button>
+
+                                <button
+                                    onClick={() => window.print()}
+                                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
+                                >
+                                    Print
+                                </button>
+
+                                <a
+                                    href="index.html"
+                                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+                                >
+                                    Individual View
+                                </a>
+                            </div>
+                        </div>
+
+                        {cacheMetadata && (
+                            <div className="mt-2 text-xs text-gray-500">
+                                Cache updated: {new Date(cacheMetadata.lastRun).toLocaleString()}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Loading state */}
+                    {loading && (
+                        <div className="glass-card rounded-xl p-8 text-center">
+                            <div className="spinner mx-auto mb-4"></div>
+                            <p className="text-gray-400">
+                                Loading schedules... {loadingProgress.current}/{loadingProgress.total}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Error state */}
+                    {error && (
+                        <div className="glass-card rounded-xl p-8 text-center border border-red-500/50">
+                            <p className="text-red-400">Error: {error}</p>
+                        </div>
+                    )}
+
+                    {/* No data state */}
+                    {!loading && !error && people.length === 0 && (
+                        <div className="glass-card rounded-xl p-8 text-center">
+                            <p className="text-gray-400">No people found for selected class</p>
+                        </div>
+                    )}
+
+                    {/* Gantt Chart */}
+                    {!loading && !error && people.length > 0 && (
+                        <div className="glass-card rounded-xl overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <div className="gantt-grid" style={{ minWidth: '900px' }}>
+                                    {/* Header row */}
+                                    <div className="gantt-header">Name</div>
+                                    {weekDates.map((day, i) => (
+                                        <div key={i} className="gantt-header">
+                                            {day.display}
+                                        </div>
+                                    ))}
+
+                                    {/* Data rows */}
+                                    {people.map((person, rowIdx) => (
+                                        <React.Fragment key={person.name}>
+                                            <div className="gantt-name">
+                                                {person.name}
+                                            </div>
+                                            {weekDates.map((day, colIdx) => {
+                                                const events = getEventsForDate(person.name, day.dateStr);
+                                                return (
+                                                    <div key={colIdx} className="gantt-cell">
+                                                        {events.map((event, eventIdx) => (
+                                                            <EventBlock key={eventIdx} event={event} />
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })}
+                                        </React.Fragment>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Legend */}
+                    {!loading && people.length > 0 && (
+                        <div className="glass-card rounded-xl p-4 mt-4 no-print">
+                            <div className="flex flex-wrap gap-4 text-sm">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 rounded event-flying"></div>
+                                    <span>Flight</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 rounded event-ground"></div>
+                                    <span>Ground</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 rounded event-na"></div>
+                                    <span>N/A</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 rounded event-supervision"></div>
+                                    <span>Supervision</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 rounded event-other"></div>
+                                    <span>Other</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
