@@ -124,32 +124,30 @@ function batchProcessAll(daysToProcess = 7) {
 
     metrics.sheetsProcessed = sheets.length;
 
-    // Cache results
+    // Cache results - cache ALL people, even those without events
     console.log('\n=== Updating Caches ===');
     const updateTimestamp = new Date().toISOString();
     const cachedPeopleNames = [];
 
     people.forEach(person => {
-      const schedule = allSchedules[person.name];
+      const schedule = allSchedules[person.name] || { events: [], days: [] };
 
-      if (schedule && schedule.events.length > 0) {
-        const cacheData = {
-          person: person.name,
-          class: person.class || '',
-          type: person.type || '',
-          events: schedule.events,
-          days: schedule.days.sort(),
-          lastUpdated: updateTimestamp,
-          version: '5.0-tiered'
-        };
+      const cacheData = {
+        person: person.name,
+        class: person.class || '',
+        type: person.type || '',
+        events: schedule.events,
+        days: schedule.days.sort(),
+        lastUpdated: updateTimestamp,
+        version: '5.0-tiered'
+      };
 
-        const json = JSON.stringify(cacheData);
-        cache.put(`schedule_${person.name}`, json, SEARCH_CONFIG.cacheTTL);
-        cachedPeopleNames.push(person.name);
+      const json = JSON.stringify(cacheData);
+      cache.put(`schedule_${person.name}`, json, SEARCH_CONFIG.cacheTTL);
+      cachedPeopleNames.push(person.name);
 
-        metrics.eventsFound += schedule.events.length;
-        metrics.cacheSize += json.length;
-      }
+      metrics.eventsFound += schedule.events.length;
+      metrics.cacheSize += json.length;
     });
 
     metrics.peopleProcessed = people.length;
@@ -203,9 +201,21 @@ function getAllPeople() {
   }
 
   const peopleMap = new Map();
+
+  // Patterns to filter out - headers and event names that appear in roster ranges
   const headerPatterns = [
     'bravo students', 'stc students', 'alpha students', 'ftc-b', 'stc-b', 'ftc-a', 'stc-a',
     'staff ip', 'stc staff', 'staff stc', 'attached', 'support', 'ifte', 'icso', 'future'
+  ];
+
+  // Event/section names that should NOT be treated as people
+  const eventNamePatterns = [
+    'academics', 'events', 'ground events', 'flying events', 'supervision',
+    'groot', 'mtg', 'meeting', 'interview', 'brief', 'debrief',
+    'ccep', 'checkride', 'sim', 'flight', 'sortie', 'mission',
+    'training', 'class', 'lecture', 'exam', 'test', 'eval',
+    'leave', 'tdy', 'appointment', 'admin', 'standby', 'alert',
+    'holiday', 'down day', 'weekend', 'maintenance', 'wx', 'weather'
   ];
 
   const rosterConfig = getRosterConfig();
@@ -220,7 +230,7 @@ function getAllPeople() {
       rosterConfig.columns.forEach(colDef => {
         data.forEach(row => {
           const name = row[colDef.col] ? row[colDef.col].trim() : '';
-          addPersonToMap(name, colDef.name, colDef.type, peopleMap, headerPatterns);
+          addPersonToMap(name, colDef.name, colDef.type, peopleMap, headerPatterns, eventNamePatterns);
         });
       });
     }
@@ -232,7 +242,7 @@ function getAllPeople() {
 
         data.forEach(row => {
           const name = row[rangeConfig.nameCol] ? row[rangeConfig.nameCol].trim() : '';
-          addPersonToMap(name, rangeConfig.name, rangeConfig.type, peopleMap, headerPatterns);
+          addPersonToMap(name, rangeConfig.name, rangeConfig.type, peopleMap, headerPatterns, eventNamePatterns);
         });
       });
     }
@@ -246,13 +256,29 @@ function getAllPeople() {
 /**
  * Helper to add a person to the map with validation
  */
-function addPersonToMap(name, className, type, peopleMap, headerPatterns) {
+function addPersonToMap(name, className, type, peopleMap, headerPatterns, eventNamePatterns) {
   if (!name || name === '.' || name === '' || name.length < 2) return;
 
   const nameLower = name.toLowerCase();
+
+  // Filter out common non-name values
   if (['false', 'true', 'yes', 'no', 'n/a', 'tbd'].includes(nameLower)) return;
+
+  // Filter out pure numbers
   if (/^\d+$/.test(name)) return;
+
+  // Filter out header patterns (column headers in roster)
   if (headerPatterns.some(p => nameLower.includes(p))) return;
+
+  // Filter out event/section names that aren't people
+  if (eventNamePatterns && eventNamePatterns.some(p => nameLower.includes(p))) return;
+
+  // Real names typically have at least one space or are single proper names
+  // Filter out entries that look like event codes (all caps with numbers or special chars)
+  if (/^[A-Z0-9\s\-\/]+$/.test(name) && name === name.toUpperCase() && name.length > 3) {
+    // Allow if it looks like a last name (single word, no numbers)
+    if (!/^[A-Z]+$/.test(name)) return;
+  }
 
   if (!peopleMap.has(name)) {
     peopleMap.set(name, { name, class: className, type: type });
