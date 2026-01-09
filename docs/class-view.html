@@ -97,6 +97,7 @@
         /* Multi-select dropdown */
         .multi-select {
             position: relative;
+            z-index: 100;
         }
 
         .multi-select-trigger {
@@ -116,9 +117,10 @@
             border: 1px solid #374151;
             border-radius: 0.5rem;
             margin-top: 4px;
-            z-index: 50;
+            z-index: 100;
             max-height: 300px;
             overflow-y: auto;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
         }
 
         .multi-select-option {
