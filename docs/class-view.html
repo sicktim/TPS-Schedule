@@ -261,6 +261,14 @@
             const [weekDates, setWeekDates] = useState([]);
             const [cacheMetadata, setCacheMetadata] = useState(null);
 
+            // Format date as YYYY-MM-DD in local timezone (not UTC)
+            const formatDateLocal = (date) => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
             // Get current week's dates (Mon-Fri)
             const getWeekDates = useCallback(() => {
                 const now = new Date();
@@ -277,7 +285,7 @@
                     date.setDate(monday.getDate() + i);
                     dates.push({
                         date: date,
-                        dateStr: date.toISOString().split('T')[0],
+                        dateStr: formatDateLocal(date),
                         display: `${DAY_ABBREV[i]} ${date.getMonth() + 1}/${date.getDate()}`
                     });
                 }
@@ -398,8 +406,8 @@
             return (
                 <div className="max-w-full mx-auto">
                     {/* Header */}
-                    <div className="glass-card rounded-xl p-4 mb-4 no-print">
-                        <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="glass-card rounded-xl p-4 mb-4 no-print" style={{ overflow: 'visible' }}>
+                        <div className="flex flex-wrap items-center justify-between gap-4" style={{ overflow: 'visible' }}>
                             <div>
                                 <h1 className="text-xl font-semibold text-white">TPS Class Schedule</h1>
                                 <p className="text-gray-400 text-sm">Weekly Gantt View</p>
