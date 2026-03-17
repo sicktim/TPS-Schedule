@@ -1,5 +1,5 @@
 /**
- * TPS Schedule v6.1 — Main Logic
+ * TPS Schedule v6.2 — Main Logic
  *
  * All application logic in one file, organized by section headers.
  * Config is in Config.gs. Both files share the GAS global namespace.
@@ -145,9 +145,13 @@ function handleFullRequest() {
   var rosterJson = cache.get('roster_cache');
   var roster = rosterJson ? JSON.parse(rosterJson) : null;
 
+  // currentAsOf = when the batch processor last scanned the sheets, not when this request was made
+  var metadataJson = cache.get('batch_metadata');
+  var batchTime = metadataJson ? JSON.parse(metadataJson).lastRun : null;
+
   return createJsonResponse({
     metadata: {
-      currentAsOf: new Date().toISOString(),
+      currentAsOf: batchTime,
       daysIncluded: days.length,
       rosterWarning: rosterWarning
     },
