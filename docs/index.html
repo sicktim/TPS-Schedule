@@ -970,13 +970,9 @@
 
                     {/* Footer */}
                     <div className="mt-6 text-center text-xs text-gray-600 space-y-1">
-                        <p>Schedule is cached and refreshed every 15 minutes via background batch processing</p>
-                        {cacheMetadata && (
-                            <p className="text-gray-500">
-                                {cacheMetadata.totalEvents} events cached
-                            </p>
-                        )}
-                        <p className="text-gray-700">v6.0 • Built: 2026-03-16</p>
+                        <p>Schedule is refreshed from whiteboard every 15 minutes.</p>
+                        <p className="text-gray-700">v6.0 • Built: 2026-03-17</p>
+                        <p><a href="https://github.com/sicktim/TPS-Schedule" target="_blank" rel="noopener" className="text-gray-700 hover:text-gray-500 transition-colors">Docs / Issues — GitHub</a></p>
                     </div>
                 </div>
             );
