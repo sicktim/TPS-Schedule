@@ -1,7 +1,3 @@
-# Custom GitHub Pages deployment workflow using Node.js 24-compatible actions.
-# Replaces the built-in "legacy" pages-build-deployment workflow which uses
-# actions pinned to Node.js 20.
-
 name: Deploy to GitHub Pages
 
 on:
@@ -18,12 +14,15 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
