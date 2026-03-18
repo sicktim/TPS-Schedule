@@ -87,7 +87,8 @@
             webAppUrl: 'https://script.google.com/macros/s/AKfycbxeaUSfQCB1xpyTtRvobV7DzHY14HeScjG8gg-cfRzhrWziFoR_Vy6UqqMJLjto4pl83Q/exec',
             version: 'enhanced',
             configVersion: 3,  // Increment to force migration (removed test mode)
-            firstTimeSetupDone: false  // Track if first-time setup completed
+            firstTimeSetupDone: false,  // Track if first-time setup completed
+            showPastDays: true  // Show events from earlier this week (Sun-today)
         };
 
         // Correct API URL (with batch processing cache)
@@ -535,13 +536,18 @@
                         }
 
                         // Filter out Academics events in individual view
-                        // (Academics are included in data for bulk/scheduler use only)
                         eventsData = eventsData.map(day => ({
                             ...day,
                             events: day.events.filter(evt =>
                                 !(evt.enhanced && evt.enhanced.section === 'Academics')
                             )
                         })).filter(day => day.events.length > 0);
+
+                        // Filter out past days if setting is disabled
+                        if (!config.showPastDays) {
+                            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+                            eventsData = eventsData.filter(day => day.date >= todayStr);
+                        }
 
                         setEvents(eventsData);
                         setLastUpdated(new Date());
@@ -764,6 +770,21 @@
                                     <p className="text-xs text-gray-500 mt-1">Enter name exactly as it appears on Whiteboard</p>
                                 </div>
 
+                                <div className="flex items-center justify-between">
+                                    <label className="text-sm text-gray-400">Show past days (earlier this week)</label>
+                                    <button
+                                        onClick={() => {
+                                            const newConfig = { ...config, showPastDays: !config.showPastDays };
+                                            setConfig(newConfig);
+                                            saveConfig(newConfig);
+                                        }}
+                                        className={`w-10 h-5 rounded-full transition-colors ${config.showPastDays ? 'bg-blue-600' : 'bg-gray-600'}`}
+                                        style={{ position: 'relative' }}
+                                    >
+                                        <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${config.showPastDays ? 'translate-x-5' : 'translate-x-0.5'}`}></div>
+                                    </button>
+                                </div>
+
                                 <button
                                     onClick={handleSaveSettings}
                                     className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 transition-colors"
@@ -971,7 +992,7 @@
                     {/* Footer */}
                     <div className="mt-6 text-center text-xs text-gray-600 space-y-1">
                         <p>Schedule is refreshed from whiteboard every 15 minutes.</p>
-                        <p className="text-gray-700">v6.0 • Built: 2026-03-17</p>
+                        <p className="text-gray-700">v6.3 • Built: 2026-03-18</p>
                         <p><a href="https://github.com/sicktim/TPS-Schedule" target="_blank" rel="noopener" className="text-gray-700 hover:text-gray-500 transition-colors">Docs / Issues — GitHub</a></p>
                     </div>
                 </div>

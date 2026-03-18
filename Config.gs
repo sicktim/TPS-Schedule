@@ -25,7 +25,11 @@ const CONFIG = {
   cacheDuration: 21600,
 
   /** How many days of schedule sheets to process */
+  /** How many days forward to process from today */
   daysToProcess: 7,
+
+  /** Include days back to Sunday of the current week (for workload counting) */
+  includePastDays: true,
 
   /** Date when sheet structure changed (YYYY-MM-DD). Sheets on/after use 'current' structure. */
   structureChangeoverDate: '2026-01-19',

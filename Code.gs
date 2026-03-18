@@ -1,5 +1,5 @@
 /**
- * TPS Schedule v6.2 — Main Logic
+ * TPS Schedule v6.3 — Main Logic
  *
  * All application logic in one file, organized by section headers.
  * Config is in Config.gs. Both files share the GAS global namespace.
@@ -591,11 +591,12 @@ function readRoster(rosterSheet) {
 }
 
 /**
- * Find available schedule sheets for the next N days.
+ * Find available schedule sheets covering the current + next week window.
+ * When CONFIG.includePastDays is true, scans back to Sunday of the current week
+ * so workload counting has full-week data. Then scans forward through next week.
  * Searches using the standard "Mon 16 Mar" naming format.
- * Scans extra days to account for weekends/gaps.
  * @param {Spreadsheet} spreadsheet - The spreadsheet object
- * @returns {Array<{name: string, isoDate: string}>} Available sheet info
+ * @returns {Array<{name: string, isoDate: string}>} Available sheet info, sorted by date
  */
 function findAvailableSheets(spreadsheet) {
   var foundSheets = [];
@@ -604,12 +605,20 @@ function findAvailableSheets(spreadsheet) {
   var monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-  // Scan extra days to account for weekends and holidays
-  var maxScan = CONFIG.daysToProcess + 7;
+  // Calculate start date: Sunday of current week if includePastDays, else today
+  var startDate = new Date(today);
+  if (CONFIG.includePastDays) {
+    var dayOfWeek = startDate.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    startDate.setDate(startDate.getDate() - dayOfWeek); // back to Sunday
+  }
+
+  // Scan from start date through daysToProcess + extra for weekends/gaps
+  // With past days: covers Sun of current week through ~end of next week
+  var maxScan = CONFIG.daysToProcess + 14;
 
   for (var i = 0; i < maxScan; i++) {
-    var targetDate = new Date(today);
-    targetDate.setDate(today.getDate() + i);
+    var targetDate = new Date(startDate);
+    targetDate.setDate(startDate.getDate() + i);
 
     var day = targetDate.getDate();
     var dayShort = dayNamesShort[targetDate.getDay()];
@@ -627,8 +636,6 @@ function findAvailableSheets(spreadsheet) {
         name: sheet.getName(),
         isoDate: y + '-' + m + '-' + d
       });
-
-      if (foundSheets.length >= CONFIG.daysToProcess) break;
     }
   }
 
