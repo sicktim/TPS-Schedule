@@ -788,10 +788,10 @@ function discoverNonRosterPeople(parsed, allPersonEvents, rosterPeople) {
 
   var discovered = {};
 
-  // Scan flying crew columns
+  // Scan flying crew columns (skip last 2: Notes, Effective, CX)
   if (parsed.flying) {
     parsed.flying.forEach(function(row) {
-      row.slice(6, -3).forEach(function(cell) {
+      row.slice(6, -2).forEach(function(cell) {
         var name = cell ? cell.trim() : '';
         if (name && name.length >= 2 && !knownNames[name.toLowerCase()]) {
           discovered[name] = true;
@@ -800,10 +800,10 @@ function discoverNonRosterPeople(parsed, allPersonEvents, rosterPeople) {
     });
   }
 
-  // Scan ground people columns
+  // Scan ground people columns (skip last 2: Notes, Effective, CX)
   if (parsed.ground) {
     parsed.ground.forEach(function(row) {
-      row.slice(3, -3).forEach(function(cell) {
+      row.slice(3, -2).forEach(function(cell) {
         var name = cell ? cell.trim() : '';
         if (name && name.length >= 2 && !knownNames[name.toLowerCase()]) {
           discovered[name] = true;
@@ -812,10 +812,10 @@ function discoverNonRosterPeople(parsed, allPersonEvents, rosterPeople) {
     });
   }
 
-  // Scan NA people columns
+  // Scan NA people columns (no trailing cols to skip)
   if (parsed.na) {
     parsed.na.forEach(function(row) {
-      row.slice(3, -1).forEach(function(cell) {
+      row.slice(3).forEach(function(cell) {
         var name = cell ? cell.trim() : '';
         if (name && name.length >= 2 && !knownNames[name.toLowerCase()]) {
           discovered[name] = true;
@@ -894,7 +894,7 @@ function parseSupervisionForPerson(nameLower, data, date) {
 
 /**
  * Parse flying events for a person.
- * Row: [Model, BriefStart, ETD, ETA, DebriefEnd, Event, Crew..., Notes, Eff, Canc, PartEff]
+ * Row: [Model, BriefStart, ETD, ETA, DebriefEnd, Event, Crew×8, Notes, Effective, CX/Non-E]
  * @param {string} nameLower - Lowercase person name
  * @param {Array<Array<string>>} data - Flying section data
  * @param {string} date - ISO date string
@@ -914,13 +914,13 @@ function parseFlyingForPerson(nameLower, data, date) {
     var debriefEnd = row[4];
     var event = row[5];
 
-    var crewColumns = row.slice(6, -3);
+    // Layout: [Model, Brief, ETD, ETA, Debrief, Event, Crew×8, Notes, Effective, CX/Non-E]
+    var crewColumns = row.slice(6, -2);
     var crew = crewColumns.filter(function(c) { return c && c !== ''; });
 
-    var effective = parseBoolean(row[row.length - 3]);
-    var cancelled = parseBoolean(row[row.length - 2]);
-    var partiallyEffective = parseBoolean(row[row.length - 1]);
-    var notes = row[row.length - 4] || '';
+    var notes = row[row.length - 3] || '';
+    var effective = parseBoolean(row[row.length - 2]);
+    var cancelled = parseBoolean(row[row.length - 1]);
 
     matches.push({
       date: date,
@@ -938,7 +938,7 @@ function parseFlyingForPerson(nameLower, data, date) {
         event: event,
         crew: crew,
         notes: notes,
-        status: { effective: effective, cancelled: cancelled, partiallyEffective: partiallyEffective }
+        status: { effective: effective, cancelled: cancelled }
       }
     });
   });
@@ -948,7 +948,7 @@ function parseFlyingForPerson(nameLower, data, date) {
 
 /**
  * Parse ground events for a person.
- * Row: [Event, Start, End, Person1, Person2, ...]
+ * Row: [Event, Start, End, People×10, Notes, Effective, CX/Non-E]
  * @param {string} nameLower - Lowercase person name
  * @param {Array<Array<string>>} data - Ground section data
  * @param {string} date - ISO date string
@@ -964,12 +964,11 @@ function parseGroundForPerson(nameLower, data, date) {
     var start = row[1];
     var end = row[2];
 
-    // Last 3 columns are status booleans (effective, cancelled, partiallyEffective)
-    var people = row.slice(3, -3).filter(function(c) { return c && c !== ''; });
-    var effective = parseBoolean(row[row.length - 3]);
-    var cancelled = parseBoolean(row[row.length - 2]);
-    var partiallyEffective = parseBoolean(row[row.length - 1]);
-    var notes = row[row.length - 4] || '';
+    // Layout: [Event, Start, End, People×10, Notes, Effective, CX/Non-E]
+    var people = row.slice(3, -2).filter(function(c) { return c && c !== ''; });
+    var notes = row[row.length - 3] || '';
+    var effective = parseBoolean(row[row.length - 2]);
+    var cancelled = parseBoolean(row[row.length - 1]);
 
     matches.push({
       date: date,
@@ -984,7 +983,7 @@ function parseGroundForPerson(nameLower, data, date) {
         end: end,
         people: people,
         notes: notes,
-        status: { effective: effective, cancelled: cancelled, partiallyEffective: partiallyEffective }
+        status: { effective: effective, cancelled: cancelled }
       }
     });
   });
@@ -994,8 +993,8 @@ function parseGroundForPerson(nameLower, data, date) {
 
 /**
  * Parse NA (not available) section for a person.
- * Row: [Reason, Start, End, Person1..Person10, Notes]
- * No status booleans — NA section does not have Eff/Canc/PartEff columns.
+ * Row: [Reason, Start, End, Person1..Person10]
+ * No notes column, no status columns — just people slots.
  * @param {string} nameLower - Lowercase person name
  * @param {Array<Array<string>>} data - NA section data
  * @param {string} date - ISO date string
@@ -1010,8 +1009,7 @@ function parseNAForPerson(nameLower, data, date) {
     var reason = row[0];
     var start = row[1];
     var end = row[2];
-    var notes = row[row.length - 1] || '';
-    var people = row.slice(3, -1).filter(function(c) { return c && c !== ''; });
+    var people = row.slice(3).filter(function(c) { return c && c !== ''; });
 
     matches.push({
       date: date,
@@ -1024,8 +1022,7 @@ function parseNAForPerson(nameLower, data, date) {
         reason: reason,
         start: start,
         end: end,
-        people: people,
-        notes: notes
+        people: people
       }
     });
   });

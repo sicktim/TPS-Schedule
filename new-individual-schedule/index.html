@@ -415,7 +415,7 @@
                                 </>
                             )}
 
-                            {/* NA (Non-Availability) */}
+                            {/* NA (Non-Availability) — no notes or status columns */}
                             {parsed.enhanced.section === 'NA' && (
                                 <>
                                     <div className="text-gray-400 text-xs">
@@ -425,9 +425,6 @@
                                         <div className="text-gray-300 text-sm">
                                             {parsed.enhanced.people.join(' • ')}
                                         </div>
-                                    )}
-                                    {parsed.enhanced.notes && (
-                                        <div className="text-gray-400 text-xs italic">{parsed.enhanced.notes}</div>
                                     )}
                                 </>
                             )}

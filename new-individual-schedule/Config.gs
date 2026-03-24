@@ -89,9 +89,9 @@ const CONFIG = {
     current: {
       sections: {
         supervision: { startRow: 2,   endRow: 11,  startCol: 0,  endCol: 14 },
-        flying:      { startRow: 13,  endRow: 94,  startCol: 0,  endCol: 17 },
-        ground:      { startRow: 96,  endRow: 157, startCol: 0,  endCol: 16 },
-        na:          { startRow: 159, endRow: 220, startCol: 0,  endCol: 13 },
+        flying:      { startRow: 13,  endRow: 94,  startCol: 0,  endCol: 16 },
+        ground:      { startRow: 96,  endRow: 157, startCol: 0,  endCol: 15 },
+        na:          { startRow: 159, endRow: 220, startCol: 0,  endCol: 12 },
         academics:   { startRow: 7,   endRow: 11,  startCol: 15, endCol: 18 }
       },
       personnelNoteStructure: {
