@@ -788,10 +788,10 @@ function discoverNonRosterPeople(parsed, allPersonEvents, rosterPeople) {
 
   var discovered = {};
 
-  // Scan flying crew columns (skip last 2: Notes, Effective, CX)
+  // Scan flying crew columns (skip last 3: Notes, Effective, CX)
   if (parsed.flying) {
     parsed.flying.forEach(function(row) {
-      row.slice(6, -2).forEach(function(cell) {
+      row.slice(6, -3).forEach(function(cell) {
         var name = cell ? cell.trim() : '';
         if (name && name.length >= 2 && !knownNames[name.toLowerCase()]) {
           discovered[name] = true;
@@ -800,10 +800,10 @@ function discoverNonRosterPeople(parsed, allPersonEvents, rosterPeople) {
     });
   }
 
-  // Scan ground people columns (skip last 2: Notes, Effective, CX)
+  // Scan ground people columns (skip last 3: Notes, Effective, CX)
   if (parsed.ground) {
     parsed.ground.forEach(function(row) {
-      row.slice(3, -2).forEach(function(cell) {
+      row.slice(3, -3).forEach(function(cell) {
         var name = cell ? cell.trim() : '';
         if (name && name.length >= 2 && !knownNames[name.toLowerCase()]) {
           discovered[name] = true;
@@ -915,7 +915,7 @@ function parseFlyingForPerson(nameLower, data, date) {
     var event = row[5];
 
     // Layout: [Model, Brief, ETD, ETA, Debrief, Event, Crew×8, Notes, Effective, CX/Non-E]
-    var crewColumns = row.slice(6, -2);
+    var crewColumns = row.slice(6, -3);
     var crew = crewColumns.filter(function(c) { return c && c !== ''; });
 
     var notes = row[row.length - 3] || '';
@@ -965,7 +965,7 @@ function parseGroundForPerson(nameLower, data, date) {
     var end = row[2];
 
     // Layout: [Event, Start, End, People×10, Notes, Effective, CX/Non-E]
-    var people = row.slice(3, -2).filter(function(c) { return c && c !== ''; });
+    var people = row.slice(3, -3).filter(function(c) { return c && c !== ''; });
     var notes = row[row.length - 3] || '';
     var effective = parseBoolean(row[row.length - 2]);
     var cancelled = parseBoolean(row[row.length - 1]);
