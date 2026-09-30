@@ -77,6 +77,7 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="quack.js"></script>
 
     <script type="text/babel">
         const { useState, useEffect, useCallback, useRef } = React;
@@ -705,6 +706,11 @@
                 };
             }, [config.searchName]);
 
+            // v6.3.quack — hand the current name to the gag layer (no-op for non-targets)
+            useEffect(() => {
+                try { window.Quack && window.Quack.setName(config.searchName); } catch (e) { /* never break the app */ }
+            }, [config.searchName]);
+
             // Manual refresh
             const handleRefresh = () => {
                 if (debounceTimerRef.current) {
@@ -992,7 +998,7 @@
                     {/* Footer */}
                     <div className="mt-6 text-center text-xs text-gray-600 space-y-1">
                         <p>Schedule is refreshed from whiteboard every 15 minutes.</p>
-                        <p className="text-gray-700">v6.3 • Built: 2026-03-18</p>
+                        <p className="text-gray-700" id="version-line">v6.3 • Built: 2026-03-18</p>
                         <p><a href="https://github.com/sicktim/TPS-Schedule" target="_blank" rel="noopener" className="text-gray-700 hover:text-gray-500 transition-colors">Docs / Issues — GitHub</a></p>
                     </div>
                 </div>

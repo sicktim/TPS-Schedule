@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TPS Schedule — phone preview</title>
+<style>
+  body { margin: 0; background: #2a2f38; font-family: -apple-system, "Segoe UI", sans-serif; color: #cfd6e0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+  .bar { display: flex; gap: 8px; align-items: center; padding: 10px 14px; font-size: 13px; flex-wrap: wrap; justify-content: center; }
+  .bar button, .bar select { min-height: 32px; padding: 0 12px; border-radius: 7px; border: 1px solid #55607a; background: #1a2230; color: #cfd6e0; font: 700 12px -apple-system, "Segoe UI", sans-serif; cursor: pointer; }
+  .bar button.on { background: #4fa3ff; border-color: #4fa3ff; color: #fff; }
+  .bar .sep { width: 1px; height: 24px; background: #55607a; margin: 0 4px; }
+  .bar label { color: #93a3b8; font-size: 12px; }
+  .stage { transform-origin: top center; }
+  .device { position: relative; background: #0a0c10; border-radius: 48px; padding: 14px; box-shadow: 0 16px 50px rgba(0,0,0,.55), inset 0 0 0 2px #2b313c; }
+  .device.android { border-radius: 30px; padding: 10px; }
+  .screen { position: relative; background: #000; border-radius: 36px; overflow: hidden; }
+  .device.android .screen { border-radius: 22px; }
+  iframe { display: block; border: 0; width: 393px; height: 852px; background: #1a1a2e; }
+  /* iPhone dynamic island */
+  .island { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 120px; height: 34px; background: #000; border-radius: 20px; z-index: 5; pointer-events: none; }
+  .device.se .island { top: 0; width: 160px; height: 26px; border-radius: 0 0 16px 16px; }
+  /* Android punch-hole */
+  .hole { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 14px; height: 14px; background: #000; border-radius: 50%; z-index: 5; pointer-events: none; }
+  .homebar { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 130px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.75); z-index: 5; pointer-events: none; }
+  .cap { font-size: 11px; color: #93a3b8; padding: 10px 0 18px; text-align: center; }
+  .cap code { color: #cfd6e0; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <button data-dev="iphone15" class="on">iPhone 15 · 393 × 852</button>
+    <button data-dev="iphonese">iPhone SE · 375 × 667</button>
+    <button data-dev="pixel8">Pixel 8 · 412 × 915</button>
+    <button data-dev="s23">Galaxy S23 · 360 × 780</button>
+    <span class="sep"></span>
+    <label>Gag:</label>
+    <select id="mode">
+      <option value="">auto (name match)</option>
+      <option value="1">force on (auto mode)</option>
+      <option value="sparks" selected>force sparks</option>
+      <option value="bread">force bread</option>
+      <option value="crash">force crash</option>
+      <option value="ad">force ad</option>
+      <option value="captcha">force captcha</option>
+      <option value="0">force off</option>
+    </select>
+    <span class="sep"></span>
+    <label>Zoom:</label>
+    <button data-zoom="fit" class="on">Fit</button>
+    <button data-zoom="1">100%</button>
+    <button data-zoom="0.85">85%</button>
+    <button data-zoom="0.7">70%</button>
+    <span class="sep"></span>
+    <button id="crash" title="Fire the crash-mode duck now (any mode)">Crash now</button>
+    <button id="ad" title="Pop the fake ad now (any mode)">Ad now</button>
+    <button id="captcha" title="Show the duck captcha now (any mode)">Captcha now</button>
+    <button id="reload">Reload</button>
+    <button id="clear" title="Clears the saved name so the first-time setup appears">Clear saved name</button>
+  </div>
+  <div class="stage" id="stage">
+    <div class="device" id="device">
+      <div class="screen">
+        <div class="island" id="notch"></div>
+        <div class="hole" id="hole" style="display:none"></div>
+        <iframe id="f" src="index.html?quack=sparks"></iframe>
+        <div class="homebar"></div>
+      </div>
+    </div>
+  </div>
+  <div class="cap" id="cap">393 × 852 — iPhone 15 viewport. Tap events and buttons inside the frame. Gag param: <code>?quack=sparks</code></div>
+<script>
+  var f = document.getElementById('f'), cap = document.getElementById('cap'), stage = document.getElementById('stage'),
+      device = document.getElementById('device'), notch = document.getElementById('notch'), hole = document.getElementById('hole'),
+      modeSel = document.getElementById('mode');
+  var devices = {
+    iphone15: [393, 852, 'iPhone 15 viewport', 'ios'],
+    iphonese: [375, 667, 'iPhone SE viewport', 'se'],
+    pixel8:   [412, 915, 'Pixel 8 viewport', 'android'],
+    s23:      [360, 780, 'Galaxy S23 viewport', 'android']
+  };
+  var cur = 'iphone15';
+  function setActive(attr, val) {
+    document.querySelectorAll('.bar button[' + attr + ']').forEach(function (b) { b.className = b.getAttribute(attr) === String(val) ? 'on' : ''; });
+  }
+  function srcFor() {
+    var m = modeSel.value;
+    // query-string cache-buster: a hash-only change would not reload the iframe
+    return 'index.html?' + (m ? 'quack=' + encodeURIComponent(m) + '&' : '') + 'r=' + Date.now();
+  }
+  function updateCap() {
+    var d = devices[cur];
+    cap.innerHTML = d[0] + ' × ' + d[1] + ' — ' + d[2] + '. Tap events and buttons inside the frame. Gag param: <code>' + (modeSel.value ? '?quack=' + modeSel.value : '(none — name match only)') + '</code>';
+  }
+  function applyDevice(k) {
+    cur = k;
+    var d = devices[k];
+    f.style.width = d[0] + 'px'; f.style.height = d[1] + 'px';
+    device.className = 'device ' + (d[3] === 'android' ? 'android' : d[3] === 'se' ? 'se' : '');
+    notch.style.display = d[3] === 'android' ? 'none' : '';
+    hole.style.display = d[3] === 'android' ? '' : 'none';
+    setActive('data-dev', k);
+    updateCap();
+    applyZoom();
+  }
+  document.querySelectorAll('.bar button[data-dev]').forEach(function (b) {
+    b.addEventListener('click', function () { applyDevice(b.getAttribute('data-dev')); });
+  });
+  var zoomMode = 'fit';
+  function applyZoom() {
+    var z = zoomMode;
+    if (z === 'fit') {
+      var avail = window.innerHeight - document.querySelector('.bar').offsetHeight - cap.offsetHeight - 16;
+      z = Math.min(1, avail / device.offsetHeight);
+    }
+    stage.style.transform = 'scale(' + z + ')';
+    stage.style.marginBottom = (-(1 - z) * device.offsetHeight) + 'px';
+  }
+  document.querySelectorAll('.bar button[data-zoom]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      zoomMode = b.getAttribute('data-zoom');
+      setActive('data-zoom', zoomMode);
+      applyZoom();
+    });
+  });
+  window.addEventListener('resize', applyZoom);
+  applyZoom();
+  modeSel.addEventListener('change', function () { f.src = srcFor(); updateCap(); });
+  document.getElementById('reload').addEventListener('click', function () { f.src = srcFor(); });
+  document.getElementById('ad').addEventListener('click', function () { try { f.contentWindow.Quack.showAd(); } catch (e) {} });
+  document.getElementById('captcha').addEventListener('click', function () { try { f.contentWindow.Quack.showCaptcha(); } catch (e) {} });
+  document.getElementById('crash').addEventListener('click', function () {
+    try { f.contentWindow.Quack.crash(); } catch (e) { alert('Quack layer not loaded in the frame'); }
+  });
+  document.getElementById('clear').addEventListener('click', function () {
+    try { localStorage.removeItem('scheduleWidgetConfig'); } catch (e) {}
+    f.src = srcFor();
+  });
+</script>
+</body>
+</html>
